@@ -29,4 +29,3 @@ jobs:
           name: mr-ahlawat-short
           path: output/mr-ahlawat-short.mp4
           retention-days: 3
-```
