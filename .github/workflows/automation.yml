@@ -234,7 +234,7 @@ jobs:
             -f lavfi \
             -i "color=c=0x10152B:s=1080x1920:r=30" \
             -i output/voiceover.mp3 \
-            -vf "drawbox=x='t*180-220':y=390:w=220:h=10:color=0x00D9FF@0.8:t=fill,drawbox=x='1080-t*100':y=1400:w=160:h=8:color=0xFFB703@0.8:t=fill,subtitles=output/captions.ass,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHWALAT':fontcolor=white:fontsize=58:x=(w-text_w)/2:y=170" \
+            -vf "drawbox=x='mod(t*180\,1080)':y=450:w=220:h=14:color=0x00D9FF@1:t=fill,drawbox=x='mod(t*140\,1080)':y=1350:w=180:h=12:color=0xFFB703@1:t=fill,subtitles=output/captions.ass,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHWALAT':fontcolor=white:fontsize=58:x=(w-text_w)/2:y=170"
             -map 0:v:0 \
             -map 1:a:0 \
             -c:v libx264 \
