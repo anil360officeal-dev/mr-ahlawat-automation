@@ -1,5 +1,5 @@
 
-name: Mr Ahlawat Cloud Automation
+name: Mr Ahlawat Shorts Automation
 
 on:
   workflow_dispatch:
@@ -10,12 +10,32 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  create-short:
     runs-on: ubuntu-latest
     steps:
-      - name: Start cloud workflow
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install video tools
         run: |
-          echo "Mr Ahlawat Cloud Automation is running!"
-          echo "Cloud time: $(date -u)"
-          echo "Laptop is not required."
-  
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Create vertical Short
+        run: |
+          mkdir -p output
+          ffmpeg -y \
+            -f lavfi \
+            -i "color=c=black:s=1080x1920:r=30:d=10" \
+            -vf "drawtext=text='MR AHLAWAT':fontcolor=white:fontsize=100:x=(w-text_w)/2:y=(h-text_h)/2,drawtext=text='New Short Coming Soon':fontcolor=yellow:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2+140" \
+            -c:v libx264 \
+            -pix_fmt yuv420p \
+            -movflags +faststart \
+            output/mr-ahlawat-short.mp4
+
+      - name: Save generated video
+        uses: actions/upload-artifact@v4
+        with:
+          name: mr-ahlawat-short
+          path: output/mr-ahlawat-short.mp4
+          retention-days: 3
