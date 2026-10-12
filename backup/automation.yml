@@ -1,0 +1,241 @@
+name: Mr Ahlawat Shorts Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: "Hindi Short ka topic"
+        required: true
+        default: "भारत और दुनिया की टेक्नोलॉजी पर एक रोचक खबर"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  create-short:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python libraries
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests piper-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib
+
+      - name: Generate Hindi Short with Gemini AI
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SHORT_TOPIC: ${{ inputs.topic }}
+        run: |
+          python - <<'PY'
+          import os
+          import json
+          import requests
+
+          api_key = os.environ["GEMINI_API_KEY"]
+          topic = os.environ.get("SHORT_TOPIC", "").strip()
+
+          if not api_key:
+              raise RuntimeError("GEMINI_API_KEY secret is missing")
+
+          prompt = f"""
+          Create metadata and a spoken script for a YouTube Short
+          for the Hindi/Hinglish channel Mr Ahlawat.
+
+          Topic: {topic}
+
+          Rules:
+          - Natural, engaging Hindi/Hinglish.
+          - Script should be around 30 seconds.
+          - Do not invent facts, quotes, or breaking news.
+          - Title must be under 100 characters and include 3 relevant hashtags.
+          - Description should explain the topic and include relevant hashtags.
+          - Return valid JSON only with these keys:
+            script, title, description, hashtags
+          - hashtags must be a JSON array of hashtag strings.
+          """
+
+          url = (
+              "https://generativelanguage.googleapis.com/v1beta/"
+              "models/gemini-3.5-flash-lite:generateContent"
+          )
+
+          response = requests.post(
+              url,
+              params={"key": api_key},
+              json={
+                  "contents": [
+                      {"parts": [{"text": prompt}]}
+                  ],
+                  "generationConfig": {
+                      "responseMimeType": "application/json"
+                  }
+              },
+              timeout=90
+          )
+
+          if not response.ok:
+              raise RuntimeError(
+                  f"Gemini API failed: HTTP {response.status_code}. "
+                  "Check API access, quota, and billing settings."
+              )
+
+          result = response.json()
+          text = result["candidates"][0]["content"]["parts"][0]["text"]
+          data = json.loads(text)
+
+          required = ["script", "title", "description", "hashtags"]
+          if any(key not in data for key in required):
+              raise RuntimeError("Gemini response is missing required fields")
+
+          data["title"] = data["title"].strip()[:100]
+          data["description"] = data["description"].strip()
+
+          os.makedirs("output", exist_ok=True)
+          with open("output/metadata.json", "w", encoding="utf-8") as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+
+          print("GEMINI_SCRIPT_SUCCESS")
+          print("Generated title:", data["title"])
+          print("Generated script:", data["script"])
+          PY
+
+      - name: Generate Hindi male voice-over
+        run: |
+          set -e
+          mkdir -p models output
+
+          BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/rohan/medium"
+
+          curl -fL "$BASE/hi_IN-rohan-medium.onnx" \
+            -o models/hi_IN-rohan-medium.onnx
+
+          curl -fL "$BASE/hi_IN-rohan-medium.onnx.json" \
+            -o models/hi_IN-rohan-medium.onnx.json
+
+          python - <<'PY'
+          import json
+          import subprocess
+          import os
+
+          with open("output/metadata.json", encoding="utf-8") as f:
+              data = json.load(f)
+
+          script = data["script"].strip()
+          if not script:
+              raise RuntimeError("AI script is empty")
+
+          subprocess.run(
+              [
+                  "piper",
+                  "--model", "models/hi_IN-rohan-medium.onnx",
+                  "--output_file", "output/voiceover.wav"
+              ],
+              input=script,
+              text=True,
+              check=True
+          )
+
+          subprocess.run(
+              [
+                  "ffmpeg", "-y",
+                  "-i", "output/voiceover.wav",
+                  "output/voiceover.mp3"
+              ],
+              check=True
+          )
+
+          if os.path.getsize("output/voiceover.mp3") < 1000:
+              raise RuntimeError("Voice-over file is too small")
+
+          print("HINDI_MALE_VOICE_SUCCESS")
+          PY
+      - name: Create video with Hindi voice-over
+        run: |
+          ffmpeg -y \
+            -f lavfi \
+            -i "color=c=black:s=1080x1920:r=30" \
+            -i output/voiceover.mp3 \
+            -vf "drawtext=text='MR AHWALAT':fontcolor=white:fontsize=80:x=(w-text_w)/2:y=(h-text_h)/2" \
+            -map 0:v:0 \
+            -map 1:a:0 \
+            -c:v libx264 \
+            -pix_fmt yuv420p \
+            -c:a aac \
+            -b:a 128k \
+            -shortest \
+            output/mr-ahlawat-short.mp4
+
+      - name: Save generated files
+        uses: actions/upload-artifact@v6
+        with:
+          name: mr-ahlawat-ai-short
+          path: output/
+          retention-days: 3
+
+      - name: Upload video to YouTube
+        env:
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          import json
+          from google.oauth2.credentials import Credentials
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+
+          with open("output/metadata.json", encoding="utf-8") as f:
+              metadata = json.load(f)
+
+          credentials = Credentials(
+              token=None,
+              refresh_token=os.environ["YOUTUBE_REFRESH_TOKEN"],
+              token_uri="https://oauth2.googleapis.com/token",
+              client_id=os.environ["YOUTUBE_CLIENT_ID"],
+              client_secret=os.environ["YOUTUBE_CLIENT_SECRET"],
+              scopes=["https://www.googleapis.com/auth/youtube.upload"]
+          )
+
+          youtube = build(
+              "youtube", "v3",
+              credentials=credentials,
+              cache_discovery=False
+          )
+
+          video = MediaFileUpload(
+              "output/mr-ahlawat-short.mp4",
+              mimetype="video/mp4",
+              resumable=True
+          )
+
+          request = youtube.videos().insert(
+              part="snippet,status",
+              body={
+                  "snippet": {
+                      "title": metadata["title"],
+                      "description": metadata["description"],
+                      "categoryId": "22"
+                  },
+                  "status": {
+                      "privacyStatus": "private",
+                      "selfDeclaredMadeForKids": False
+                  }
+              },
+              media_body=video
+          )
+
+          response = request.execute()
+          print("YOUTUBE_UPLOAD_SUCCESS")
+          print("Video ID:", response["id"])
+          print("Video URL: https://www.youtube.com/watch?v=" + response["id"])
+          PY
