@@ -1,4 +1,4 @@
-
+```yaml
 name: Mr Ahlawat Shorts Automation
 
 on:
@@ -11,10 +11,11 @@ permissions:
 
 jobs:
   create-short:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install video tools
         run: |
@@ -24,6 +25,7 @@ jobs:
       - name: Create vertical Short
         run: |
           mkdir -p output
+
           ffmpeg -y \
             -f lavfi \
             -i "color=c=black:s=1080x1920:r=30:d=10" \
@@ -34,8 +36,9 @@ jobs:
             output/mr-ahlawat-short.mp4
 
       - name: Save generated video
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mr-ahlawat-short
           path: output/mr-ahlawat-short.mp4
           retention-days: 3
+```
