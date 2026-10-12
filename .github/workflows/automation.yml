@@ -143,15 +143,21 @@ jobs:
 
           print("HINDI_MALE_VOICE_SUCCESS")
           PY
-      - name: Create test video
+
+      - name: Create video with Hindi voice-over
         run: |
-          mkdir -p output
           ffmpeg -y \
             -f lavfi \
-            -i "color=c=black:s=1080x1920:r=30:d=10" \
+            -i "color=c=black:s=1080x1920:r=30" \
+            -i output/voiceover.mp3 \
             -vf "drawtext=text='MR AHWALAT':fontcolor=white:fontsize=80:x=(w-text_w)/2:y=(h-text_h)/2" \
+            -map 0:v:0 \
+            -map 1:a:0 \
             -c:v libx264 \
             -pix_fmt yuv420p \
+            -c:a aac \
+            -b:a 128k \
+            -shortest \
             output/mr-ahlawat-short.mp4
 
       - name: Save generated files
