@@ -158,13 +158,83 @@ jobs:
 
           print("HINDI_MALE_VOICE_SUCCESS")
           PY
-      - name: Create video with Hindi voice-over
+    
+      - name: Create video with Hindi captions and animated visuals
         run: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-core
+
+          python - <<'PY'
+          import json
+          import wave
+          import re
+          import os
+
+          with open("output/metadata.json", encoding="utf-8") as f:
+              script = json.load(f)["script"].strip()
+
+          with wave.open("output/voiceover.wav", "rb") as wav:
+              duration = wav.getnframes() / wav.getframerate()
+
+          sentences = re.split(r'(?<=[।!?])\s+', script)
+          chunks = []
+
+          for sentence in sentences:
+              words = sentence.split()
+              line = ""
+              for word in words:
+                  candidate = (line + " " + word).strip()
+                  if len(candidate) > 32 and line:
+                      chunks.append(line)
+                      line = word
+                  else:
+                      line = candidate
+              if line:
+                  chunks.append(line)
+
+          if not chunks:
+              raise RuntimeError("No captions generated")
+
+          def stamp(seconds):
+              cs = int(round(seconds * 100))
+              h, cs = divmod(cs, 360000)
+              m, cs = divmod(cs, 6000)
+              s, cs = divmod(cs, 100)
+              return f"{h}:{m:02}:{s:02}.{cs:02}"
+
+          weights = [max(1, len(c)) for c in chunks]
+          total_weight = sum(weights)
+          elapsed = 0.0
+
+          os.makedirs("output", exist_ok=True)
+          with open("output/captions.ass", "w", encoding="utf-8") as f:
+              f.write("[Script Info]\n")
+              f.write("ScriptType: v4.00+\n")
+              f.write("PlayResX: 1080\nPlayResY: 1920\n\n")
+              f.write("[V4+ Styles]\n")
+              f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
+              f.write("Style: Default,Noto Sans Devanagari,58,&H00FFFFFF,&H0000FFFF,&H0010152B,&H90000000,-1,0,0,0,100,100,0,0,1,4,1,2,70,70,340,1\n\n")
+              f.write("[Events]\n")
+              f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+
+              for chunk, weight in zip(chunks, weights):
+                  start = elapsed
+                  elapsed += duration * weight / total_weight
+                  safe_chunk = chunk.replace("{", "(").replace("}", ")")
+                  f.write(
+                      f"Dialogue: 0,{stamp(start)},{stamp(elapsed)},Default,,0,0,0,,"
+                      f"{safe_chunk}\n"
+                  )
+
+          print("HINDI_CAPTIONS_CREATED")
+          PY
+
           ffmpeg -y \
             -f lavfi \
-            -i "color=c=black:s=1080x1920:r=30" \
+            -i "color=c=0x10152B:s=1080x1920:r=30" \
             -i output/voiceover.mp3 \
-            -vf "drawtext=text='MR AHWALAT':fontcolor=white:fontsize=80:x=(w-text_w)/2:y=(h-text_h)/2" \
+            -vf "drawbox=x='t*180-220':y=390:w=220:h=10:color=0x00D9FF@0.8:t=fill,drawbox=x='1080-t*100':y=1400:w=160:h=8:color=0xFFB703@0.8:t=fill,subtitles=output/captions.ass,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHWALAT':fontcolor=white:fontsize=58:x=(w-text_w)/2:y=170" \
             -map 0:v:0 \
             -map 1:a:0 \
             -c:v libx264 \
