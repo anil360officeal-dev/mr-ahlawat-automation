@@ -108,6 +108,41 @@ jobs:
           print("Generated script:", data["script"])
           PY
 
+      - name: Generate Hindi male voice-over
+        run: |
+          python - <<'PY'
+          import asyncio
+          import json
+          import edge_tts
+          import os
+
+          with open("output/metadata.json", encoding="utf-8") as f:
+              data = json.load(f)
+
+          script = data["script"].strip()
+          if not script:
+              raise RuntimeError("AI script is empty")
+
+          async def main():
+              voice = "hi-IN-MadhurNeural"
+              communicate = edge_tts.Communicate(
+                  script,
+                  voice,
+                  rate="-5%",
+                  volume="+0%"
+              )
+              await communicate.save("output/voiceover.mp3")
+
+          asyncio.run(main())
+
+          if not os.path.exists("output/voiceover.mp3"):
+              raise RuntimeError("Voice-over MP3 was not created")
+
+          if os.path.getsize("output/voiceover.mp3") < 1000:
+              raise RuntimeError("Voice-over MP3 is unexpectedly small")
+
+          print("HINDI_MALE_VOICE_SUCCESS")
+          PY
       - name: Create test video
         run: |
           mkdir -p output
