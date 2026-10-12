@@ -28,7 +28,7 @@ jobs:
       - name: Install Python libraries
         run: |
           python -m pip install --upgrade pip
-          pip install requests edge-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib
+          pip install requests piper-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
       - name: Generate Hindi Short with Gemini AI
         env:
@@ -110,10 +110,20 @@ jobs:
 
       - name: Generate Hindi male voice-over
         run: |
+          set -e
+          mkdir -p models output
+
+          BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/rohan/medium"
+
+          curl -fL "$BASE/hi_IN-rohan-medium.onnx" \
+            -o models/hi_IN-rohan-medium.onnx
+
+          curl -fL "$BASE/hi_IN-rohan-medium.onnx.json" \
+            -o models/hi_IN-rohan-medium.onnx.json
+
           python - <<'PY'
-          import asyncio
           import json
-          import edge_tts
+          import subprocess
           import os
 
           with open("output/metadata.json", encoding="utf-8") as f:
@@ -123,27 +133,31 @@ jobs:
           if not script:
               raise RuntimeError("AI script is empty")
 
-          async def main():
-              voice = "hi-IN-MadhurNeural"
-              communicate = edge_tts.Communicate(
-                  script,
-                  voice,
-                  rate="-5%",
-                  volume="+0%"
-              )
-              await communicate.save("output/voiceover.mp3")
+          subprocess.run(
+              [
+                  "piper",
+                  "--model", "models/hi_IN-rohan-medium.onnx",
+                  "--output_file", "output/voiceover.wav"
+              ],
+              input=script,
+              text=True,
+              check=True
+          )
 
-          asyncio.run(main())
-
-          if not os.path.exists("output/voiceover.mp3"):
-              raise RuntimeError("Voice-over MP3 was not created")
+          subprocess.run(
+              [
+                  "ffmpeg", "-y",
+                  "-i", "output/voiceover.wav",
+                  "output/voiceover.mp3"
+              ],
+              check=True
+          )
 
           if os.path.getsize("output/voiceover.mp3") < 1000:
-              raise RuntimeError("Voice-over MP3 is unexpectedly small")
+              raise RuntimeError("Voice-over file is too small")
 
           print("HINDI_MALE_VOICE_SUCCESS")
           PY
-
       - name: Create video with Hindi voice-over
         run: |
           ffmpeg -y \
