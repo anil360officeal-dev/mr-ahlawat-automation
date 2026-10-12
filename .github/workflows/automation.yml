@@ -28,7 +28,7 @@ jobs:
       - name: Install Python libraries
         run: |
           python -m pip install --upgrade pip
-          pip install requests google-api-python-client google-auth-httplib2 google-auth-oauthlib
+          pip install requests edge-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
       - name: Generate Hindi Short with Gemini AI
         env:
