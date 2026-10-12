@@ -25,7 +25,6 @@ jobs:
       - name: Create vertical Short
         run: |
           mkdir -p output
-
           ffmpeg -y \
             -f lavfi \
             -i "color=c=black:s=1080x1920:r=30:d=10" \
