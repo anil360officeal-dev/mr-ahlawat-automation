@@ -314,6 +314,7 @@ jobs:
           if saved == 0:
               print("No images found; check the search terms or Wikimedia API response.")
           PY
+          python - <<'PY'
       - name: Create video with Hindi captions and animated visuals
         run: |
           set -e
@@ -384,17 +385,16 @@ jobs:
 
           print("HINDI_CAPTIONS_CREATED")
           PY
-          
-import glob
-import os
-import subprocess
+          import glob
+          import os
+          import subprocess
 
-images = sorted(glob.glob("output/media/image_*"))[:5]
+          images = sorted(glob.glob("output/media/image_*"))[:5]
 
-if images:
-    args = ["ffmpeg", "-y"]
-    for path in images:
-        args += ["-loop", "1", "-t", "5", "-i", path]
+          if images:
+          args = ["ffmpeg", "-y"]
+          for path in images:
+          args += ["-loop", "1", "-t", "5", "-i", path]
 
     filters = []
     labels = []
@@ -409,12 +409,12 @@ if images:
         )
         labels.append(f"[{label}]")
 
-    filters.append(
+          filters.append(
         "".join(labels)
         + f"concat=n={len(images)}:v=1:a=0[outv]"
     )
 
-    args += [
+        args += [
         "-filter_complex", ";".join(filters),
         "-map", "[outv]", "-r", "30",
         "-c:v", "libx264", "-preset", "veryfast",
@@ -423,6 +423,7 @@ if images:
     subprocess.run(args, check=True)
     print(f"IMAGE_SLIDESHOW_CREATED: {len(images)} images")
 else:
+    PY
     subprocess.run([
         "ffmpeg", "-y", "-f", "lavfi",
         "-i", "color=c=0x071426:s=1080x1920:r=30",
