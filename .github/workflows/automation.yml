@@ -332,38 +332,41 @@ jobs:
                   print(f"Search warning for '{search_term}': {e}")
           
           with open("output/media_attribution.txt", "w", encoding="utf-8") as f:
-          f.write("\n".join(attribution))
+              f.write("\n".join(attribution))
 
           print(f"WIKIMEDIA_IMAGES_DOWNLOADED: {saved}")
 
           if saved == 0:
-          print("Creating fallback visuals with FFmpeg.")
+              print("Creating fallback visuals with FFmpeg.")
 
-          fallback_colors = [
-           "0x101b30",
-           "0x17243a",
-           "0x202b40",
-           "0x152033",
-           "0x101827",
-          ]
+              fallback_colors = [
+                  "0x101b30",
+                  "0x17243a",
+                  "0x202b40",
+                  "0x152033",
+                  "0x101827",
+              ]
 
-        for i, color in enumerate(fallback_colors, start=1):
-          output_path = f"output/media/image_{i:02d}.png"
+              for i, color in enumerate(fallback_colors, start=1):
+                  output_path = f"output/media/image_{i:02d}.png"
 
-          subprocess.run(
-            [
-                "ffmpeg", "-y",
-                "-f", "lavfi",
-                "-i", f"color=c={color}:s=1080x1920",
-                "-frames:v", "1",
-                output_path,
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-          )
-    print("FALLBACK_VISUALS_CREATED: 5")
-     - name: Create Ground Report video with Hindi captions
+                  subprocess.run(
+                      [
+                          "ffmpeg", "-y",
+                          "-f", "lavfi",
+                          "-i", f"color=c={color}:s=1080x1920",
+                          "-frames:v", "1",
+                          output_path,
+                      ],
+                      check=True,
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.PIPE,
+                  )
+
+              print("FALLBACK_VISUALS_CREATED: 5")
+          PY
+
+      - name: Create Ground Report video with Hindi captions
         run: |
           set -e
           sudo apt-get update
