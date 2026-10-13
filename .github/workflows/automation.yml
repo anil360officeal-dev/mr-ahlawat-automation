@@ -442,7 +442,7 @@ jobs:
               f.write("PlayResX: 1080\nPlayResY: 1920\n\n")
               f.write("[V4+ Styles]\n")
               f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-              f.write("Style: Default,Noto Sans Devanagari,56,&H00FFFFFF,&H0000FFFF,&H0010152B,&H90000000,-1,0,0,0,100,100,0,0,1,4,1,2,70,70,340,1\n\n")
+              f.write("Style: Default,Noto Sans Devanagari,54,&H00FFFFFF,&H0000FFFF,&H0010152B,&H90000000,-1,0,0,0,100,100,0,0,1,4,1,2,70,70,480,1\n\n")
               f.write("[Events]\n")
               f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
 
@@ -453,6 +453,18 @@ jobs:
                   f.write(
                       f"Dialogue: 0,{stamp(start)},{stamp(elapsed)},Default,,0,0,0,,{safe_chunk}\n"
                   )
+
+          # Create topic-specific text assets for the newsroom layout.
+          with open("output/metadata.json", encoding="utf-8") as f:
+              metadata = json.load(f)
+          headline = re.sub(r"\\s+", " ", metadata.get("title", "MR AHLAWAT NEWS")).strip()
+          headline = headline.replace("\\", " ").replace("'", "’")
+          ticker = re.sub(r"\\s+", " ", metadata.get("description", script)).strip()
+          ticker = ticker.replace("\\", " ").replace("'", "’")
+          with open("output/headline.txt", "w", encoding="utf-8") as f:
+              f.write(headline[:90])
+          with open("output/ticker.txt", "w", encoding="utf-8") as f:
+              f.write(("  •  BREAKING UPDATE  •  " + ticker + "  •  ")[:240])
 
           images = sorted(glob.glob("output/media/image_*"))[:5]
 
@@ -521,13 +533,15 @@ jobs:
             [0:v]drawbox=x=0:y=0:w=1080:h=180:color=0x071426@0.88:t=fill,\
             drawbox=x=0:y=180:w=1080:h=8:color=0x00D9FF:t=fill,\
             drawbox=x=0:y=180:w=1080:h=145:color=0xB90020@0.94:t=fill,\
-            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=54:x=(w-text_w)/2:y=45,\
-            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GROUND REPORT':fontcolor=white:fontsize=65:x=(w-text_w)/2:y=220,\
-            drawbox=x=0:y=1510:w=1080:h=125:color=0xB90020@0.94:t=fill,\
-            drawbox=x=0:y=1635:w=1080:h=5:color=0x00D9FF:t=fill,\
-            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GROUND REPORT  |  HINDI NEWS':fontcolor=white:fontsize=37:x=(w-text_w)/2:y=1550,\
-            drawbox=x=0:y=1760:w=1080:h=160:color=0x071426@0.96:t=fill,\
-            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT  •  FIELD UPDATE':fontcolor=0x00D9FF:fontsize=36:x=(w-text_w)/2:y=1810,\
+            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=54:x=(w-text_w)/2:y=35,\\
+            drawtext=fontfile=/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf:textfile=output/headline.txt:fontcolor=white:fontsize=43:x=(w-text_w)/2:y=218:shadowcolor=black:shadowx=2:shadowy=2,\\
+            drawbox=x=0:y=1510:w=1080:h=125:color=0xB90020@0.97:t=fill,\\
+            drawbox=x=0:y=1635:w=1080:h=5:color=0x00D9FF:t=fill,\\
+            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='LIVE UPDATE  •  MR AHLAWAT':fontcolor=white:fontsize=37:x=(w-text_w)/2:y=1550,\\
+            drawbox=x=0:y=1640:w=1080:h=85:color=0x071426@0.98:t=fill,\\
+            drawtext=fontfile=/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf:textfile=output/ticker.txt:fontcolor=white:fontsize=32:x='w-mod(t*190\\,w+text_w)':y=1664,\\
+            drawbox=x=0:y=1760:w=1080:h=160:color=0x071426@0.98:t=fill,\\
+            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT  •  HINDI NEWS':fontcolor=0x00D9FF:fontsize=36:x=(w-text_w)/2:y=1810,\\
             subtitles=output/captions.ass[v]" \
             -map "[v]" \
             -map 1:a:0 \
