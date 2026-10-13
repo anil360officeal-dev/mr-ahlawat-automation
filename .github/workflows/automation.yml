@@ -120,23 +120,23 @@ jobs:
 
           result = response.json()
           candidates = result.get("candidates", [])
-if not candidates:
-    raise RuntimeError(
-        "Gemini returned no candidates. Check API response, "
-        "safety blocking, model access, or quota."
-    )
 
-parts = candidates[0].get("content", {}).get("parts", [])
-text_parts = [
-    part["text"] for part in parts
-    if isinstance(part, dict) and "text" in part
-]
+          if not candidates:
+              raise RuntimeError(
+                  "Gemini returned no candidates. Check API response, "
+                  "safety blocking, model access, or quota."
+              )
 
-if not text_parts:
-    raise RuntimeError("Gemini response contains no text")
+          parts = candidates[0].get("content", {}).get("parts", [])
+          text_parts = [
+              part["text"] for part in parts
+              if isinstance(part, dict) and "text" in part
+          ]
 
-text = "\n".join(text_parts)
-data = json.loads(text)
+          if not text_parts:
+              raise RuntimeError("Gemini response contains no text")
+
+          text = "\n".join(text_parts)
           data = json.loads(text)
 
           required = ["script", "title", "description", "hashtags"]
