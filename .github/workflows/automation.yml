@@ -185,9 +185,6 @@ jobs:
           PY
     
       - name: Download relevant Wikimedia images
-        
-      - name: Download relevant Wikimedia images
-        env:
           SHORT_TOPIC: ${{ inputs.topic }}
         run: |
           python - <<'PY'
