@@ -59,7 +59,6 @@ jobs:
           - Title must be under 100 characters and include 3 relevant hashtags.
           - Description should explain the topic and include relevant hashtags.
           - Return valid JSON only with these keys:
-            script, title, description, hashtags
           - script, title, description, hashtags, visual_search_terms
           - visual_search_terms must be a JSON array containing 3 short English search queries for relevant news photos or video B-roll.
           """
@@ -184,7 +183,9 @@ jobs:
           print("HINDI_MALE_VOICE_SUCCESS")
           PY
     
+
       - name: Download relevant Wikimedia images
+        env:
           SHORT_TOPIC: ${{ inputs.topic }}
         run: |
           python - <<'PY'
