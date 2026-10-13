@@ -473,8 +473,22 @@ jobs:
               media_body=video
           )
 
-          response = request.execute()
-          print("YOUTUBE_UPLOAD_SUCCESS")
-          print("Video ID:", response["id"])
-          print("Video URL: https://www.youtube.com/watch?v=" + response["id"])
-          PY
+```python
+from googleapiclient.errors import ResumableUploadError
+import sys
+
+try:
+    response = request.execute()
+except ResumableUploadError as e:
+    if "uploadLimitExceeded" in str(e):
+        print("YOUTUBE_UPLOAD_LIMIT_REACHED")
+        print("YouTube upload limit reached.")
+        print("Generated video is saved in the workflow artifact.")
+        sys.exit(0)
+    raise
+
+print("YOUTUBE_UPLOAD_SUCCESS")
+print("Video ID:", response["id"])
+print("Video URL: https://www.youtube.com/watch?v=" + response["id"])
+```
+
