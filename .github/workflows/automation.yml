@@ -589,20 +589,7 @@ jobs:
           ffmpeg -y \
             -i output/visuals.mp4 \
             -i output/voiceover.mp3 \
-            -filter_complex "\
-            [0:v]drawbox=x=0:y=0:w=1080:h=180:color=0x071426@0.88:t=fill,\
-            drawbox=x=0:y=180:w=1080:h=8:color=0x00D9FF:t=fill,\
-            drawbox=x=0:y=180:w=1080:h=145:color=0xB90020@0.94:t=fill,\
-            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=54:x=(w-text_w)/2:y=35,\\
-            drawtext=fontfile=/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf:textfile=output/headline.txt:fontcolor=white:fontsize=43:x=(w-text_w)/2:y=218:shadowcolor=black:shadowx=2:shadowy=2,\\
-            drawbox=x=0:y=1510:w=1080:h=125:color=0xB90020@0.97:t=fill,\\
-            drawbox=x=0:y=1635:w=1080:h=5:color=0x00D9FF:t=fill,\\
-            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='LIVE UPDATE  •  MR AHLAWAT':fontcolor=white:fontsize=37:x=(w-text_w)/2:y=1550,\\
-            drawbox=x=0:y=1640:w=1080:h=85:color=0x071426@0.98:t=fill,\\
-            drawtext=fontfile=/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf:textfile=output/ticker.txt:fontcolor=white:fontsize=32:x=(w-text_w)/2:y=1664,\
-            drawbox=x=0:y=1760:w=1080:h=160:color=0x071426@0.98:t=fill,\\
-            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT  •  HINDI NEWS':fontcolor=0x00D9FF:fontsize=36:x=(w-text_w)/2:y=1810,\\
-            subtitles=filename=output/captions.ass[v]" \
+            -filter_complex "[0:v]drawbox=x=0:y=0:w=1080:h=180:color=0x071426@0.88:t=fill,drawbox=x=0:y=180:w=1080:h=8:color=0x00D9FF:t=fill,drawbox=x=0:y=180:w=1080:h=145:color=0xB90020@0.94:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=54:x=(w-text_w)/2:y=35,drawtext=fontfile=/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf:textfile=output/headline.txt:fontcolor=white:fontsize=43:x=(w-text_w)/2:y=218:shadowcolor=black:shadowx=2:shadowy=2,drawbox=x=0:y=1510:w=1080:h=125:color=0xB90020@0.97:t=fill,drawbox=x=0:y=1635:w=1080:h=5:color=0x00D9FF:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='LIVE UPDATE  •  MR AHLAWAT':fontcolor=white:fontsize=37:x=(w-text_w)/2:y=1550,drawbox=x=0:y=1640:w=1080:h=85:color=0x071426@0.98:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf:textfile=output/ticker.txt:fontcolor=white:fontsize=32:x=(w-text_w)/2:y=1664,drawbox=x=0:y=1760:w=1080:h=160:color=0x071426@0.98:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT  •  HINDI NEWS':fontcolor=0x00D9FF:fontsize=36:x=(w-text_w)/2:y=1810,subtitles=filename=output/captions.ass[v]" \
             -map "[v]" \
             -map 1:a:0 \
             -c:v libx264 \
