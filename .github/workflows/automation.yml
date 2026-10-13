@@ -118,6 +118,7 @@ jobs:
                   "Check model availability, API access, quota, and billing."
               )
 
+          
           result = response.json()
           candidates = result.get("candidates", [])
 
@@ -138,7 +139,6 @@ jobs:
 
           text = "\n".join(text_parts)
           data = json.loads(text)
-
           required = ["script", "title", "description", "hashtags"]
           if any(key not in data for key in required):
               raise RuntimeError("Gemini response is missing required fields")
