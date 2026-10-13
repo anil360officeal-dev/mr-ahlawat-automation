@@ -313,7 +313,7 @@ jobs:
           print(f"WIKIMEDIA_IMAGES_DOWNLOADED: {saved}")
           if saved == 0:
               print("No images found; check the search terms or Wikimedia API response.")
-          PY  
+          PY
       - name: Create video with Hindi captions and animated visuals
         run: |
           set -e
