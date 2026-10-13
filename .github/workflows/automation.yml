@@ -457,9 +457,9 @@ jobs:
           # Create topic-specific text assets for the newsroom layout.
           with open("output/metadata.json", encoding="utf-8") as f:
               metadata = json.load(f)
-          headline = re.sub(r"\\s+", " ", metadata.get("title", "MR AHLAWAT NEWS")).strip()
+          headline = re.sub(r"\s+", " ", metadata.get("title", "MR AHLAWAT NEWS")).strip()
           headline = headline.replace("\\", " ").replace("'", "’")
-          ticker = re.sub(r"\\s+", " ", metadata.get("description", script)).strip()
+          ticker = re.sub(r"\s+", " ", metadata.get("description", script)).strip()
           ticker = ticker.replace("\\", " ").replace("'", "’")
           with open("output/headline.txt", "w", encoding="utf-8") as f:
               f.write(headline[:90])
@@ -539,7 +539,7 @@ jobs:
             drawbox=x=0:y=1635:w=1080:h=5:color=0x00D9FF:t=fill,\\
             drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='LIVE UPDATE  •  MR AHLAWAT':fontcolor=white:fontsize=37:x=(w-text_w)/2:y=1550,\\
             drawbox=x=0:y=1640:w=1080:h=85:color=0x071426@0.98:t=fill,\\
-            drawtext=fontfile=/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf:textfile=output/ticker.txt:fontcolor=white:fontsize=32:x='w-mod(t*190\\,w+text_w)':y=1664,\\
+            drawtext=fontfile=/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf:textfile=output/ticker.txt:fontcolor=white:fontsize=32:x=(w-text_w)/2:y=1664,\
             drawbox=x=0:y=1760:w=1080:h=160:color=0x071426@0.98:t=fill,\\
             drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT  •  HINDI NEWS':fontcolor=0x00D9FF:fontsize=36:x=(w-text_w)/2:y=1810,\\
             subtitles=output/captions.ass[v]" \
