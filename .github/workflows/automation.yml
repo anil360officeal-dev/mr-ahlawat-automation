@@ -364,6 +364,15 @@ jobs:
                   )
 
               print("FALLBACK_VISUALS_CREATED: 5")
+
+          visuals = [
+              name for name in os.listdir("output/media")
+              if name.startswith("image_")
+              and name.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
+          ]
+          if not visuals:
+              raise RuntimeError("No visuals were downloaded or generated")
+          print(f"VISUAL_FILES_READY: {len(visuals)}")
           PY
 
       - name: Create Ground Report video with Hindi captions
