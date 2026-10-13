@@ -210,6 +210,7 @@ jobs:
       - name: Download relevant Wikimedia images
         env:
           SHORT_TOPIC: ${{ inputs.topic }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         run: |
           python - <<'PY'
           import os
@@ -370,6 +371,50 @@ jobs:
                   )
               print("NEWSROOM_GRAPHIC_FALLBACKS_CREATED: 5")
 
+          # Try to add genuine moving B-roll from Pixabay when its API key is configured.
+          video_key = os.environ.get("PIXABAY_API_KEY", "").strip()
+          video_count = 0
+          if video_key:
+              for search_term in queries[:3]:
+                  if video_count >= 2:
+                      break
+                  try:
+                      api = session.get(
+                          "https://pixabay.com/api/videos/",
+                          params={"key": video_key, "q": search_term, "per_page": 5,
+                                  "safesearch": "true", "video_type": "film"},
+                          timeout=30
+                      )
+                      api.raise_for_status()
+                      hits = api.json().get("hits", [])
+                      for hit in hits:
+                          if video_count >= 2:
+                              break
+                          variants = hit.get("videos", {})
+                          clip = variants.get("medium") or variants.get("small") or variants.get("large")
+                          if not clip or not clip.get("url"):
+                              continue
+                          try:
+                              video_response = session.get(clip["url"], timeout=60)
+                              video_response.raise_for_status()
+                              if len(video_response.content) < 20000:
+                                  continue
+                              video_count += 1
+                              video_path = f"output/media/clip_{video_count:02d}.mp4"
+                              with open(video_path, "wb") as out:
+                                  out.write(video_response.content)
+                              attribution.append(
+                                  f"Pixabay video | ID: {hit.get('id', 'unknown')} | "
+                                  f"Source: https://pixabay.com/videos/"
+                              )
+                              print(f"PIXABAY_VIDEO_DOWNLOADED: {video_count}")
+                          except Exception as clip_error:
+                              print(f"Video download warning: {clip_error}")
+                  except Exception as api_error:
+                      print(f"Pixabay video search unavailable: {api_error}")
+          else:
+              print("PIXABAY_API_KEY not configured; using photo visuals for this run.")
+
           with open("output/media_attribution.txt", "w", encoding="utf-8") as f:
               f.write("\n".join(attribution))
 
@@ -466,37 +511,52 @@ jobs:
           with open("output/ticker.txt", "w", encoding="utf-8") as f:
               f.write(("  •  BREAKING UPDATE  •  " + ticker + "  •  ")[:240])
 
+          video_clips = sorted(glob.glob("output/media/clip_*.mp4"))[:2]
           images = sorted(glob.glob("output/media/image_*"))[:5]
+          assets = [("video", path) for path in video_clips] + [
+              ("image", path) for path in images
+          ]
 
-          if not images:
-              raise RuntimeError(
-                  "No relevant images found. Check the Wikimedia image download step."
-              )
+          if not assets:
+              raise RuntimeError("No image or video visuals found.")
 
+          # Mix moving B-roll with photos. Video clips come first, followed by photos.
           transition_duration = 0.45
           segment_duration = (
-              duration + transition_duration * (len(images) - 1)
-          ) / len(images)
+              duration + transition_duration * (len(assets) - 1)
+          ) / len(assets)
           args = ["ffmpeg", "-y"]
 
-          for path in images:
-              args += ["-loop", "1", "-framerate", "30",
-                       "-t", f"{segment_duration:.3f}", "-i", path]
+          for kind, path in assets:
+              if kind == "video":
+                  args += ["-stream_loop", "-1", "-i", path]
+              else:
+                  args += ["-loop", "1", "-framerate", "30",
+                           "-t", f"{segment_duration:.3f}", "-i", path]
 
           filters = []
           labels = []
 
-          for i in range(len(images)):
+          for i, (kind, path) in enumerate(assets):
               label = f"v{i}"
-              filters.append(
-                  f"[{i}:v]scale=1080:1920:"
-                  f"force_original_aspect_ratio=increase,"
-                  f"crop=1080:1920,setsar=1,fps=30,"
-                  f"zoompan=z='min(zoom+0.0005,1.08)':"
-                  f"x='iw/2-(iw/zoom/2)':"
-                  f"y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,"
-                  f"format=yuv420p,settb=AVTB[{label}]"
-              )
+              if kind == "video":
+                  filters.append(
+                      f"[{i}:v]trim=duration={segment_duration:.3f},"
+                      f"setpts=PTS-STARTPTS,scale=1080:1920:"
+                      f"force_original_aspect_ratio=increase,"
+                      f"crop=1080:1920,setsar=1,fps=30,"
+                      f"format=yuv420p,settb=AVTB[{label}]"
+                  )
+              else:
+                  filters.append(
+                      f"[{i}:v]scale=1080:1920:"
+                      f"force_original_aspect_ratio=increase,"
+                      f"crop=1080:1920,setsar=1,fps=30,"
+                      f"zoompan=z='min(zoom+0.0005,1.08)':"
+                      f"x='iw/2-(iw/zoom/2)':"
+                      f"y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,"
+                      f"format=yuv420p,settb=AVTB[{label}]"
+                  )
               labels.append(f"[{label}]")
 
           previous = labels[0]
@@ -522,7 +582,7 @@ jobs:
           ]
 
           subprocess.run(args, check=True)
-          print(f"GROUND_REPORT_VISUALS_CREATED: {len(images)} images")
+          print(f"GROUND_REPORT_VISUALS_CREATED: {len(assets)} segments ({len(video_clips)} video clips, {len(images)} photos)")
           print(f"VOICEOVER_DURATION: {duration:.2f} seconds")
           PY
 
