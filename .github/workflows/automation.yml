@@ -461,7 +461,10 @@ jobs:
                   "No relevant images found. Check the Wikimedia image download step."
               )
 
-          segment_duration = duration / len(images)
+          transition_duration = 0.45
+          segment_duration = (
+              duration + transition_duration * (len(images) - 1)
+          ) / len(images)
           args = ["ffmpeg", "-y"]
 
           for path in images:
@@ -476,18 +479,26 @@ jobs:
               filters.append(
                   f"[{i}:v]scale=1080:1920:"
                   f"force_original_aspect_ratio=increase,"
-                  f"crop=1080:1920,setsar=1,"
+                  f"crop=1080:1920,setsar=1,fps=30,"
                   f"zoompan=z='min(zoom+0.0005,1.08)':"
                   f"x='iw/2-(iw/zoom/2)':"
                   f"y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,"
-                  f"format=yuv420p[{label}]"
+                  f"format=yuv420p,settb=AVTB[{label}]"
               )
               labels.append(f"[{label}]")
 
-          filters.append(
-              "".join(labels)
-              + f"concat=n={len(images)}:v=1:a=0[outv]"
-          )
+          previous = labels[0]
+          for i in range(1, len(labels)):
+              output_label = f"xf{i}"
+              offset = i * (segment_duration - transition_duration)
+              filters.append(
+                  f"{previous}{labels[i]}"
+                  f"xfade=transition=fade:duration={transition_duration}:"
+                  f"offset={offset:.3f}[{output_label}]"
+              )
+              previous = f"[{output_label}]"
+
+          filters.append(f"{previous}format=yuv420p[outv]")
 
           args += [
               "-filter_complex", ";".join(filters),
