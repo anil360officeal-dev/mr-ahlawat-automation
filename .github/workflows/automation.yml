@@ -602,7 +602,7 @@ jobs:
             drawtext=fontfile=/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf:textfile=output/ticker.txt:fontcolor=white:fontsize=32:x=(w-text_w)/2:y=1664,\
             drawbox=x=0:y=1760:w=1080:h=160:color=0x071426@0.98:t=fill,\\
             drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT  •  HINDI NEWS':fontcolor=0x00D9FF:fontsize=36:x=(w-text_w)/2:y=1810,\\
-            subtitles=output/captions.ass[v]" \
+            subtitles=filename=output/captions.ass[v]" \
             -map "[v]" \
             -map 1:a:0 \
             -c:v libx264 \
