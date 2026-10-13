@@ -384,6 +384,51 @@ jobs:
 
           print("HINDI_CAPTIONS_CREATED")
           PY
+          
+import glob
+import os
+import subprocess
+
+images = sorted(glob.glob("output/media/image_*"))[:5]
+
+if images:
+    args = ["ffmpeg", "-y"]
+    for path in images:
+        args += ["-loop", "1", "-t", "5", "-i", path]
+
+    filters = []
+    labels = []
+
+    for i in range(len(images)):
+        label = f"v{i}"
+        filters.append(
+            f"[{i}:v]scale=1080:1920:"
+            f"force_original_aspect_ratio=increase,"
+            f"crop=1080:1920,setsar=1,"
+            f"format=yuv420p[{label}]"
+        )
+        labels.append(f"[{label}]")
+
+    filters.append(
+        "".join(labels)
+        + f"concat=n={len(images)}:v=1:a=0[outv]"
+    )
+
+    args += [
+        "-filter_complex", ";".join(filters),
+        "-map", "[outv]", "-r", "30",
+        "-c:v", "libx264", "-preset", "veryfast",
+        "-pix_fmt", "yuv420p", "output/visuals.mp4"
+    ]
+    subprocess.run(args, check=True)
+    print(f"IMAGE_SLIDESHOW_CREATED: {len(images)} images")
+else:
+    subprocess.run([
+        "ffmpeg", "-y", "-f", "lavfi",
+        "-i", "color=c=0x071426:s=1080x1920:r=30",
+        "-t", "5", "-c:v", "libx264",
+        "-pix_fmt", "yuv420p", "output/visuals.mp4"
+    ], check=True)
           ffmpeg -y \
             -f lavfi \
             -i "color=c=0x071426:s=1080x1920:r=30" \
