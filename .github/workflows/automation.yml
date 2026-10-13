@@ -69,19 +69,43 @@ jobs:
               "models/gemini-3.5-flash-lite:generateContent"
           )
 
-          response = requests.post(
-              url,
-              params={"key": api_key},
-              json={
-                  "contents": [
-                      {"parts": [{"text": prompt}]}
-                  ],
-                  "generationConfig": {
-                      "responseMimeType": "application/json"
-                  }
-              },
-              timeout=90
-          )
+          
+          import time
+
+          for attempt in range(5):
+              try:
+                  response = requests.post(
+                      url,
+                      params={"key": api_key},
+                      json={
+                          "contents": [
+                              {"parts": [{"text": prompt}]}
+                          ],
+                          "generationConfig": {
+                              "responseMimeType": "application/json"
+                          }
+                      },
+                      timeout=90
+                  )
+
+                  if response.ok:
+                      break
+
+                  if response.status_code not in (429, 500, 502, 503, 504):
+                      break
+
+                  print(
+                      f"Gemini temporary error HTTP {response.status_code}; "
+                      f"attempt {attempt + 1}/5"
+                  )
+
+              except requests.RequestException as e:
+                  print(f"Gemini connection error: {e}")
+
+              if attempt < 4:
+                  delay = 5 * (2 ** attempt)
+                  print(f"Retrying in {delay} seconds...")
+                  time.sleep(delay)
 
           if not response.ok:
               raise RuntimeError(
