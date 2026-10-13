@@ -40,7 +40,7 @@ jobs:
           import json
           import requests
 
-          api_key = os.environ["GEMINI_API_KEY"]
+          api_key = os.environ.get("GEMINI_API_KEY", "").strip()
           topic = os.environ.get("SHORT_TOPIC", "").strip()
 
           if not api_key:
@@ -68,8 +68,8 @@ jobs:
               "models/gemini-3.5-flash-lite:generateContent"
           )
 
-          
           import time
+          response = None
 
           for attempt in range(5):
               try:
@@ -100,20 +100,43 @@ jobs:
 
               except requests.RequestException as e:
                   print(f"Gemini connection error: {e}")
+                  response = None
 
               if attempt < 4:
                   delay = 5 * (2 ** attempt)
                   print(f"Retrying in {delay} seconds...")
                   time.sleep(delay)
 
-          if not response.ok:
+          if response is None or not response.ok:
+              status = (
+                  response.status_code
+                  if response is not None
+                  else "connection error"
+              )
               raise RuntimeError(
-                  f"Gemini API failed: HTTP {response.status_code}. "
-                  "Check API access, quota, and billing settings."
+                  f"Gemini API failed: {status}. "
+                  "Check model availability, API access, quota, and billing."
               )
 
           result = response.json()
-          text = result["candidates"][0]["content"]["parts"][0]["text"]
+          candidates = result.get("candidates", [])
+if not candidates:
+    raise RuntimeError(
+        "Gemini returned no candidates. Check API response, "
+        "safety blocking, model access, or quota."
+    )
+
+parts = candidates[0].get("content", {}).get("parts", [])
+text_parts = [
+    part["text"] for part in parts
+    if isinstance(part, dict) and "text" in part
+]
+
+if not text_parts:
+    raise RuntimeError("Gemini response contains no text")
+
+text = "\n".join(text_parts)
+data = json.loads(text)
           data = json.loads(text)
 
           required = ["script", "title", "description", "hashtags"]
@@ -314,7 +337,7 @@ jobs:
           if saved == 0:
               print("No images found; check the search terms or Wikimedia API response.")
           PY
-          python - <<'PY'
+
       - name: Create video with Hindi captions and animated visuals
         run: |
           set -e
@@ -447,11 +470,11 @@ jobs:
             drawbox=x=0:y=1510:w=1080:h=125:color=0xC90024:t=fill,\
             drawbox=x=0:y=1635:w=1080:h=4:color=0xFFFFFF:t=fill,\
             drawbox=x=0:y=1760:w=1080:h=160:color=0x020811:t=fill,\
-            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHWALAT':fontcolor=white:fontsize=58:x=(w-text_w)/2:y=100,\
+            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=58:x=(w-text_w)/2:y=100,\
             drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='BREAKING NEWS':fontcolor=white:fontsize=76:x=(w-text_w)/2:y=275,\
             drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='LATEST UPDATE':fontcolor=0x00D9FF:fontsize=48:x=(w-text_w)/2:y=430,\
             drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='LIVE  NEWS  UPDATE':fontcolor=white:fontsize=44:x='1080-mod(t*180\\,1800)':y=1550,\
-            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHWALAT  |  HINDI NEWS':fontcolor=white:fontsize=38:x=(w-text_w)/2:y=1810,\
+            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT  |  HINDI NEWS':fontcolor=white:fontsize=38:x=(w-text_w)/2:y=1810,\
             subtitles=output/captions.ass[v]" \
             -map "[v]" \
             -map 1:a:0 \
@@ -461,7 +484,7 @@ jobs:
             -b:a 128k \
             -shortest \
             output/mr-ahlawat-short.mp4
-               - name: Save generated files
+      - name: Save generated files
         uses: actions/upload-artifact@v6
         with:
           name: mr-ahlawat-ai-short
