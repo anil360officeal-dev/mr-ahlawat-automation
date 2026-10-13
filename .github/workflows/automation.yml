@@ -185,6 +185,8 @@ jobs:
           PY
     
       - name: Download relevant Wikimedia images
+        
+      - name: Download relevant Wikimedia images
         env:
           SHORT_TOPIC: ${{ inputs.topic }}
         run: |
@@ -192,8 +194,14 @@ jobs:
           import os
           import json
           import requests
+          from urllib.parse import quote
 
           os.makedirs("output/media", exist_ok=True)
+
+          for name in os.listdir("output/media"):
+              path = os.path.join("output/media", name)
+              if os.path.isfile(path):
+                  os.remove(path)
 
           with open("output/metadata.json", encoding="utf-8") as f:
               metadata = json.load(f)
@@ -201,88 +209,113 @@ jobs:
           queries = metadata.get("visual_search_terms", [])
           if isinstance(queries, str):
               queries = [queries]
+          queries = [q.strip() for q in queries if isinstance(q, str) and q.strip()]
 
           if not queries:
-              queries = [os.environ.get("SHORT_TOPIC", "technology news")]
+              topic = os.environ.get("SHORT_TOPIC", "").strip()
+              queries = [topic] if topic else ["India news"]
 
           session = requests.Session()
           session.headers.update({
-              "User-Agent": "MrAhlawatShorts/1.0 (GitHub Actions media search)"
+              "User-Agent": "MrAhlawatShorts/1.0 (image search)"
           })
 
           saved = 0
           attribution = []
+          seen = set()
 
-          for query in queries[:3]:
+          for search_term in queries[:4]:
+              if saved >= 5:
+                  break
+
               try:
+                  print(f"Searching Wikimedia Commons: {search_term}")
+
                   response = session.get(
                       "https://commons.wikimedia.org/w/api.php",
                       params={
                           "action": "query",
                           "format": "json",
-                          "generator": "search",
-                          "gsrsearch": f"filetype:bitmap {query}",
-                          "gsrnamespace": 6,
-                          "gsrlimit": 8,
-                          "prop": "imageinfo",
-                          "iiprop": "url|mime|extmetadata",
-                          "iiurlwidth": 1280
+                          "list": "search",
+                          "srnamespace": 6,
+                          "srsearch": search_term,
+                          "srlimit": 10
                       },
                       timeout=30
                   )
                   response.raise_for_status()
-                  pages = response.json().get("query", {}).get("pages", {})
+                  results = response.json().get("query", {}).get("search", [])
 
-                  for page in pages.values():
+                  for result in results:
                       if saved >= 5:
                           break
 
-                      info = page.get("imageinfo", [{}])[0]
-                      mime = info.get("mime", "")
-                      if mime not in ("image/jpeg", "image/png", "image/webp"):
+                      title = result.get("title", "")
+                      if not title or title in seen:
                           continue
+                      seen.add(title)
 
-                      url = info.get("thumburl") or info.get("url")
-                      if not url:
-                          continue
-
-                      image = session.get(url, timeout=45)
-                      image.raise_for_status()
-
-                      if len(image.content) < 5000:
-                          continue
-
-                      ext = {
-                          "image/jpeg": "jpg",
-                          "image/png": "png",
-                          "image/webp": "webp"
-                      }[mime]
-
-                      saved += 1
-                      path = f"output/media/image_{saved:02d}.{ext}"
-                      with open(path, "wb") as out:
-                          out.write(image.content)
-
-                      meta = info.get("extmetadata", {})
-                      artist = meta.get("Artist", {}).get("value", "Unknown")
-                      license_name = meta.get("LicenseShortName", {}).get("value", "Check license")
-                      page_url = page.get("title", "")
-                      attribution.append(
-                          f"{page_url} | Creator: {artist} | "
-                          f"License: {license_name} | Source: Wikimedia Commons"
+                      detail = session.get(
+                          "https://commons.wikimedia.org/w/api.php",
+                          params={
+                              "action": "query",
+                              "format": "json",
+                              "titles": title,
+                              "prop": "imageinfo",
+                              "iiprop": "url|mime|extmetadata",
+                              "iiurlwidth": 1280
+                          },
+                          timeout=30
                       )
-                      print(f"Downloaded image {saved}: {page_url}")
+                      detail.raise_for_status()
+                      pages = detail.json().get("query", {}).get("pages", {})
+
+                      for page in pages.values():
+                          info = page.get("imageinfo", [{}])[0]
+                          mime = info.get("mime", "")
+                          if mime not in ("image/jpeg", "image/png", "image/webp"):
+                              continue
+
+                          url = info.get("thumburl") or info.get("url")
+                          if not url:
+                              continue
+
+                          image = session.get(url, timeout=45)
+                          image.raise_for_status()
+                          if len(image.content) < 5000:
+                              continue
+
+                          ext = {
+                              "image/jpeg": "jpg",
+                              "image/png": "png",
+                              "image/webp": "webp"
+                          }[mime]
+
+                          saved += 1
+                          with open(f"output/media/image_{saved:02d}.{ext}", "wb") as out:
+                              out.write(image.content)
+
+                          meta = info.get("extmetadata", {})
+                          artist = meta.get("Artist", {}).get("value", "Unknown")
+                          license_name = meta.get("LicenseShortName", {}).get("value", "Check license")
+                          source_page = "https://commons.wikimedia.org/wiki/" + quote(title.replace(" ", "_"))
+                          attribution.append(
+                              f"{title} | Creator: {artist} | "
+                              f"License: {license_name} | Source: {source_page}"
+                          )
+                          print(f"Downloaded image {saved}: {title}")
+                          break
 
               except Exception as e:
-                  print(f"Media search warning for {query}: {e}")
+                  print(f"Search warning for '{search_term}': {e}")
 
           with open("output/media_attribution.txt", "w", encoding="utf-8") as f:
               f.write("\n".join(attribution))
 
           print(f"WIKIMEDIA_IMAGES_DOWNLOADED: {saved}")
           if saved == 0:
-              print("No images found; existing video generation will continue.")
-          PY
+              print("No images found; check the search terms or Wikimedia API response.")
+          PY          
       - name: Create video with Hindi captions and animated visuals
         run: |
           set -e
