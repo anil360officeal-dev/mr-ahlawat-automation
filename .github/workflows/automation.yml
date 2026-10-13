@@ -419,7 +419,7 @@ jobs:
           name: mr-ahlawat-ai-short
           path: output/
           retention-days: 3
-
+          ```
   - name: Upload video to YouTube
     env:
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
@@ -479,16 +479,11 @@ jobs:
 
       try:
           response = request.execute()
-
       except (HttpError, ResumableUploadError) as e:
-          error_text = str(e)
-
-          if "uploadLimitExceeded" in error_text:
+          if "uploadLimitExceeded" in str(e):
               print("YOUTUBE_UPLOAD_LIMIT_REACHED")
-              print("YouTube upload limit reached.")
-              print("The generated video is saved in the workflow artifact.")
+              print("Generated video is saved in the workflow artifact.")
               sys.exit(0)
-
           raise
 
       print("YOUTUBE_UPLOAD_SUCCESS")
