@@ -184,6 +184,105 @@ jobs:
           print("HINDI_MALE_VOICE_SUCCESS")
           PY
     
+      - name: Download relevant Wikimedia images
+        env:
+          SHORT_TOPIC: ${{ inputs.topic }}
+        run: |
+          python - <<'PY'
+          import os
+          import json
+          import requests
+
+          os.makedirs("output/media", exist_ok=True)
+
+          with open("output/metadata.json", encoding="utf-8") as f:
+              metadata = json.load(f)
+
+          queries = metadata.get("visual_search_terms", [])
+          if isinstance(queries, str):
+              queries = [queries]
+
+          if not queries:
+              queries = [os.environ.get("SHORT_TOPIC", "technology news")]
+
+          session = requests.Session()
+          session.headers.update({
+              "User-Agent": "MrAhlawatShorts/1.0 (GitHub Actions media search)"
+          })
+
+          saved = 0
+          attribution = []
+
+          for query in queries[:3]:
+              try:
+                  response = session.get(
+                      "https://commons.wikimedia.org/w/api.php",
+                      params={
+                          "action": "query",
+                          "format": "json",
+                          "generator": "search",
+                          "gsrsearch": f"filetype:bitmap {query}",
+                          "gsrnamespace": 6,
+                          "gsrlimit": 8,
+                          "prop": "imageinfo",
+                          "iiprop": "url|mime|extmetadata",
+                          "iiurlwidth": 1280
+                      },
+                      timeout=30
+                  )
+                  response.raise_for_status()
+                  pages = response.json().get("query", {}).get("pages", {})
+
+                  for page in pages.values():
+                      if saved >= 5:
+                          break
+
+                      info = page.get("imageinfo", [{}])[0]
+                      mime = info.get("mime", "")
+                      if mime not in ("image/jpeg", "image/png", "image/webp"):
+                          continue
+
+                      url = info.get("thumburl") or info.get("url")
+                      if not url:
+                          continue
+
+                      image = session.get(url, timeout=45)
+                      image.raise_for_status()
+
+                      if len(image.content) < 5000:
+                          continue
+
+                      ext = {
+                          "image/jpeg": "jpg",
+                          "image/png": "png",
+                          "image/webp": "webp"
+                      }[mime]
+
+                      saved += 1
+                      path = f"output/media/image_{saved:02d}.{ext}"
+                      with open(path, "wb") as out:
+                          out.write(image.content)
+
+                      meta = info.get("extmetadata", {})
+                      artist = meta.get("Artist", {}).get("value", "Unknown")
+                      license_name = meta.get("LicenseShortName", {}).get("value", "Check license")
+                      page_url = page.get("title", "")
+                      attribution.append(
+                          f"{page_url} | Creator: {artist} | "
+                          f"License: {license_name} | Source: Wikimedia Commons"
+                      )
+                      print(f"Downloaded image {saved}: {page_url}")
+
+              except Exception as e:
+                  print(f"Media search warning for {query}: {e}")
+
+          with open("output/media_attribution.txt", "w", encoding="utf-8") as f:
+              f.write("\n".join(attribution))
+
+          print(f"WIKIMEDIA_IMAGES_DOWNLOADED: {saved}")
+          if saved == 0:
+              print("No images found; existing video generation will continue.")
+          PY
       - name: Create video with Hindi captions and animated visuals
         run: |
           set -e
