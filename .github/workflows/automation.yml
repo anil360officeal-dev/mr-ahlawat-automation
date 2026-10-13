@@ -60,7 +60,8 @@ jobs:
           - Description should explain the topic and include relevant hashtags.
           - Return valid JSON only with these keys:
             script, title, description, hashtags
-          - hashtags must be a JSON array of hashtag strings.
+          - script, title, description, hashtags, visual_search_terms
+          - visual_search_terms must be a JSON array containing 3 short English search queries for relevant news photos or video B-roll.
           """
 
           url = (
