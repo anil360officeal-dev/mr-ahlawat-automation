@@ -337,24 +337,29 @@ jobs:
           if saved == 0:
               print("No images found; check the search terms or Wikimedia API response.")
           PY
-
-      - name: Create video with Hindi captions and animated visuals
+          
+      - name: Create Ground Report video with Hindi captions
         run: |
           set -e
           sudo apt-get update
-          sudo apt-get install -y fonts-noto-core
+          sudo apt-get install -y fonts-noto-core fonts-dejavu-core
 
           python - <<'PY'
           import json
           import wave
           import re
           import os
+          import glob
+          import subprocess
 
           with open("output/metadata.json", encoding="utf-8") as f:
               script = json.load(f)["script"].strip()
 
           with wave.open("output/voiceover.wav", "rb") as wav:
               duration = wav.getnframes() / wav.getframerate()
+
+          if duration <= 0:
+              raise RuntimeError("Voice-over duration is invalid")
 
           sentences = re.split(r'(?<=[।!?])\s+', script)
           chunks = []
@@ -386,14 +391,13 @@ jobs:
           total_weight = sum(weights)
           elapsed = 0.0
 
-          os.makedirs("output", exist_ok=True)
           with open("output/captions.ass", "w", encoding="utf-8") as f:
               f.write("[Script Info]\n")
               f.write("ScriptType: v4.00+\n")
               f.write("PlayResX: 1080\nPlayResY: 1920\n\n")
               f.write("[V4+ Styles]\n")
               f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-              f.write("Style: Default,Noto Sans Devanagari,58,&H00FFFFFF,&H0000FFFF,&H0010152B,&H90000000,-1,0,0,0,100,100,0,0,1,4,1,2,70,70,340,1\n\n")
+              f.write("Style: Default,Noto Sans Devanagari,56,&H00FFFFFF,&H0000FFFF,&H0010152B,&H90000000,-1,0,0,0,100,100,0,0,1,4,1,2,70,70,340,1\n\n")
               f.write("[Events]\n")
               f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
 
@@ -402,88 +406,84 @@ jobs:
                   elapsed += duration * weight / total_weight
                   safe_chunk = chunk.replace("{", "(").replace("}", ")")
                   f.write(
-                      f"Dialogue: 0,{stamp(start)},{stamp(elapsed)},Default,,0,0,0,,"
-                      f"{safe_chunk}\n"
+                      f"Dialogue: 0,{stamp(start)},{stamp(elapsed)},Default,,0,0,0,,{safe_chunk}\n"
                   )
-
-          print("HINDI_CAPTIONS_CREATED")
-          PY
-
-          python - <<'PY'
-          import glob
-          import subprocess
 
           images = sorted(glob.glob("output/media/image_*"))[:5]
 
-          if images:
-              args = ["ffmpeg", "-y"]
-              for path in images:
-                  args += ["-loop", "1", "-t", "7", "-i", path]
-
-              filters = []
-              labels = []
-
-              for i in range(len(images)):
-                  label = f"v{i}"
-                  filters.append(
-                      f"[{i}:v]scale=1080:1920:"
-                      f"force_original_aspect_ratio=increase,"
-                      f"crop=1080:1920,setsar=1,"
-                      f"format=yuv420p[{label}]"
-                  )
-                  labels.append(f"[{label}]")
-
-              filters.append(
-                  "".join(labels)
-                  + f"concat=n={len(images)}:v=1:a=0[outv]"
+          if not images:
+              raise RuntimeError(
+                  "No relevant images found. Check the Wikimedia image download step."
               )
 
-              args += [
-                  "-filter_complex", ";".join(filters),
-                  "-map", "[outv]", "-r", "30",
-                  "-c:v", "libx264", "-preset", "veryfast",
-                  "-pix_fmt", "yuv420p", "output/visuals.mp4"
-              ]
-              subprocess.run(args, check=True)
-              print(f"IMAGE_SLIDESHOW_CREATED: {len(images)} images")
-          else:
-              subprocess.run([
-                  "ffmpeg", "-y", "-f", "lavfi",
-                  "-i", "color=c=0x071426:s=1080x1920:r=30",
-                  "-t", "60", "-c:v", "libx264",
-                  "-pix_fmt", "yuv420p", "output/visuals.mp4"
-              ], check=True)
-              print("NO_IMAGES_FOUND_USING_BACKGROUND")
+          segment_duration = duration / len(images)
+          args = ["ffmpeg", "-y"]
+
+          for path in images:
+              args += ["-loop", "1", "-framerate", "30",
+                       "-t", f"{segment_duration:.3f}", "-i", path]
+
+          filters = []
+          labels = []
+
+          for i in range(len(images)):
+              label = f"v{i}"
+              filters.append(
+                  f"[{i}:v]scale=1080:1920:"
+                  f"force_original_aspect_ratio=increase,"
+                  f"crop=1080:1920,setsar=1,"
+                  f"zoompan=z='min(zoom+0.0005,1.08)':"
+                  f"x='iw/2-(iw/zoom/2)':"
+                  f"y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,"
+                  f"format=yuv420p[{label}]"
+              )
+              labels.append(f"[{label}]")
+
+          filters.append(
+              "".join(labels)
+              + f"concat=n={len(images)}:v=1:a=0[outv]"
+          )
+
+          args += [
+              "-filter_complex", ";".join(filters),
+              "-map", "[outv]", "-an",
+              "-c:v", "libx264", "-preset", "veryfast",
+              "-pix_fmt", "yuv420p",
+              "-t", f"{duration:.3f}",
+              "output/visuals.mp4"
+          ]
+
+          subprocess.run(args, check=True)
+          print(f"GROUND_REPORT_VISUALS_CREATED: {len(images)} images")
+          print(f"VOICEOVER_DURATION: {duration:.2f} seconds")
           PY
 
           ffmpeg -y \
             -i output/visuals.mp4 \
             -i output/voiceover.mp3 \
             -filter_complex "\
-            [0:v]drawgrid=width=100:height=100:thickness=1:color=0x183454@0.45,\
-            drawbox=x=0:y=0:w=1080:h=12:color=0x00D9FF:t=fill,\
-            drawbox=x=0:y=250:w=1080:h=130:color=0xC90024:t=fill,\
-            drawbox=x=0:y=390:w=1080:h=4:color=0xFF334F:t=fill,\
-            drawbox=x=65:y=500:w=950:h=420:color=0x102B49@0.25:t=fill,\
-            drawbox=x=65:y=500:w=950:h=6:color=0x00D9FF:t=fill,\
-            drawbox=x=65:y=960:w=950:h=6:color=0x00D9FF:t=fill,\
-            drawbox=x=0:y=1510:w=1080:h=125:color=0xC90024:t=fill,\
-            drawbox=x=0:y=1635:w=1080:h=4:color=0xFFFFFF:t=fill,\
-            drawbox=x=0:y=1760:w=1080:h=160:color=0x020811:t=fill,\
-            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=58:x=(w-text_w)/2:y=100,\
-            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='BREAKING NEWS':fontcolor=white:fontsize=76:x=(w-text_w)/2:y=275,\
-            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='LATEST UPDATE':fontcolor=0x00D9FF:fontsize=48:x=(w-text_w)/2:y=430,\
-            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='LIVE  NEWS  UPDATE':fontcolor=white:fontsize=44:x='1080-mod(t*180\\,1800)':y=1550,\
-            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT  |  HINDI NEWS':fontcolor=white:fontsize=38:x=(w-text_w)/2:y=1810,\
+            [0:v]drawbox=x=0:y=0:w=1080:h=180:color=0x071426@0.88:t=fill,\
+            drawbox=x=0:y=180:w=1080:h=8:color=0x00D9FF:t=fill,\
+            drawbox=x=0:y=180:w=1080:h=145:color=0xB90020@0.94:t=fill,\
+            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=54:x=(w-text_w)/2:y=45,\
+            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GROUND REPORT':fontcolor=white:fontsize=65:x=(w-text_w)/2:y=220,\
+            drawbox=x=0:y=1510:w=1080:h=125:color=0xB90020@0.94:t=fill,\
+            drawbox=x=0:y=1635:w=1080:h=5:color=0x00D9FF:t=fill,\
+            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GROUND REPORT  |  HINDI NEWS':fontcolor=white:fontsize=37:x=(w-text_w)/2:y=1550,\
+            drawbox=x=0:y=1760:w=1080:h=160:color=0x071426@0.96:t=fill,\
+            drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT  •  FIELD UPDATE':fontcolor=0x00D9FF:fontsize=36:x=(w-text_w)/2:y=1810,\
             subtitles=output/captions.ass[v]" \
             -map "[v]" \
             -map 1:a:0 \
             -c:v libx264 \
+            -preset veryfast \
             -pix_fmt yuv420p \
             -c:a aac \
             -b:a 128k \
+            -tune stillimage \
             -shortest \
             output/mr-ahlawat-short.mp4
+
       - name: Save generated files
         uses: actions/upload-artifact@v6
         with:
