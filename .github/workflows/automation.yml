@@ -476,7 +476,8 @@ jobs:
 ```python
 from googleapiclient.errors import ResumableUploadError
 import sys
-
+          import sys
+          from googleapiclient.errors import ResumableUploadError
 ```python
           try:
               response = request.execute()
