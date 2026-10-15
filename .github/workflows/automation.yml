@@ -1165,6 +1165,91 @@ jobs:
           print("STREET_REPORTER_INTRO_NOT_FOUND: keeping relevant topic videos/photos; no fake talking portrait.")
           PY
 
+      - name: Generate optional talking reporter with SadTalker (CPU, free)
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        continue-on-error: true
+        timeout-minutes: 25
+        env:
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+        run: |
+          set -e
+          mkdir -p output/media output/sadtalker_source
+          python - <<'PY'
+          import os, requests
+          key = os.environ.get("PIXABAY_API_KEY", "").strip()
+          if not key:
+              raise SystemExit("PIXABAY_API_KEY missing; SadTalker optional step skipped.")
+          queries = [
+              "Indian man street reporter microphone outdoor",
+              "male street interviewer microphone",
+              "Indian man selfie vlog street"
+          ]
+          session = requests.Session()
+          for q in queries:
+              try:
+                  response = session.get("https://pixabay.com/api/", params={
+                      "key": key, "q": q, "image_type": "photo",
+                      "orientation": "vertical", "safesearch": "true", "per_page": 10
+                  }, timeout=25)
+                  response.raise_for_status()
+                  for hit in response.json().get("hits", []):
+                      url = hit.get("largeImageURL") or hit.get("webformatURL")
+                      if not url:
+                          continue
+                      image = session.get(url, timeout=40)
+                      image.raise_for_status()
+                      if len(image.content) < 10000:
+                          continue
+                      path = "output/sadtalker_source/reporter.jpg"
+                      with open(path, "wb") as f:
+                          f.write(image.content)
+                      print("SADTALKER_SOURCE_PHOTO_READY:", q, "ID:", hit.get("id", "unknown"))
+                      raise SystemExit(0)
+              except SystemExit:
+                  raise
+              except Exception as e:
+                  print("Source photo search warning:", q, repr(e))
+          raise SystemExit("No suitable portrait photo found; keeping regular video intro.")
+          PY
+
+          # SadTalker is an open-source audio-driven talking-face model.
+          # This is best-effort on the free CPU runner; normal render remains the fallback.
+          git clone --depth 1 https://github.com/OpenTalker/SadTalker.git /tmp/SadTalker
+          python -m pip install --upgrade pip
+          python -m pip install -r /tmp/SadTalker/requirements.txt
+          bash /tmp/SadTalker/scripts/download_models.sh
+
+          mkdir -p output/sadtalker
+          python /tmp/SadTalker/inference.py \
+            --driven_audio output/voiceover.wav \
+            --source_image output/sadtalker_source/reporter.jpg \
+            --result_dir output/sadtalker \
+            --preprocess crop \
+            --size 256 \
+            --still \
+            --cpu
+
+          python - <<'PY'
+          import glob, os, subprocess
+          candidates = [
+              p for p in glob.glob("output/sadtalker/**/*.mp4", recursive=True)
+              if os.path.getsize(p) > 20000
+          ]
+          if not candidates:
+              raise SystemExit("SadTalker created no MP4; keeping regular intro.")
+          source = max(candidates, key=os.path.getmtime)
+          target = "output/media/reporter_intro.mp4"
+          # Keep generated talking face silent here; production narration is muxed later.
+          subprocess.run([
+              "ffmpeg", "-y", "-i", source, "-an", "-t", "7.5",
+              "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p",
+              "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", target
+          ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+          if os.path.getsize(target) < 10000:
+              raise SystemExit("Talking reporter output invalid; keep fallback intro.")
+          print("SADTALKER_TALKING_REPORTER_SUCCESS:", source)
+          PY
+
       - name: Create Ground Report video with Hindi captions
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
