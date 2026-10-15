@@ -547,14 +547,6 @@ jobs:
                   "zoompan=z='min(zoom+0.0007,1.10)':"
                   "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
                   "d=1:s=1080x1920:fps=30,"
-                  "drawbox=x=0:y=1380:w=1080:h=540:color=0x071426@0.42:t=fill,"
-                  "drawbox=x=0:y=1380:w=1080:h=8:color=0xE53935:t=fill,"
-                  "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-                  "text='MR AHLAWAT':fontcolor=white:fontsize=48:x=54:y=1450,"
-                  "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:"
-                  "text='GROUND REPORT':fontcolor=0x00D9FF:fontsize=34:x=54:y=1520,"
-                  "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf:"
-                  "text='FIELD UPDATE':fontcolor=white:fontsize=28:x=54:y=1600,"
                   "format=yuv420p",
                   "-an", "-c:v", "libx264", "-preset", "veryfast",
                   "-pix_fmt", "yuv420p", "-r", "30",
@@ -630,7 +622,7 @@ jobs:
               f.write("PlayResX: 1080\nPlayResY: 1920\n\n")
               f.write("[V4+ Styles]\n")
               f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-              f.write("Style: Default,Noto Sans Devanagari,54,&H00FFFFFF,&H0000FFFF,&H0010152B,&H90000000,-1,0,0,0,100,100,0,0,1,4,1,2,70,70,480,1\n\n")
+              f.write("Style: Default,Noto Sans Devanagari,46,&H00FFFFFF,&H0000FFFF,&H0010152B,&HFF000000,-1,0,0,0,100,100,0,0,1,2,0,2,70,70,260,1\\n\\n")
               f.write("[Events]\n")
               f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
 
@@ -744,7 +736,7 @@ jobs:
           ffmpeg -y \
             -i output/visuals.mp4 \
             -i output/voiceover.mp3 \
-            -filter_complex "[0:v]drawbox=x=0:y=0:w=1080:h=112:color=0x071426@0.62:t=fill,drawbox=x=0:y=108:w=14:h=112:color=0xE53935:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=42:x=42:y=27:shadowcolor=black:shadowx=2:shadowy=2,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GROUND REPORT':fontcolor=0x00D9FF:fontsize=25:x=42:y=76,drawbox=x=0:y=1570:w=1080:h=230:color=0x071426@0.78:t=fill,drawbox=x=0:y=1570:w=1080:h=8:color=0xE53935:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf:textfile=output/headline.txt:fontcolor=white:fontsize=38:x=48:y=1620:shadowcolor=black:shadowx=2:shadowy=2,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='ON LOCATION  •  MR AHLAWAT':fontcolor=0x00D9FF:fontsize=26:x=48:y=1710,subtitles=filename=output/captions.ass[v]" \
+            -filter_complex "[0:v]drawbox=x=0:y=0:w=1080:h=112:color=0x071426@0.62:t=fill,drawbox=x=0:y=108:w=14:h=112:color=0xE53935:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=42:x=42:y=27:shadowcolor=black:shadowx=2:shadowy=2,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GROUND REPORT':fontcolor=0x00D9FF:fontsize=25:x=42:y=76,subtitles=filename=output/captions.ass[v]" \\
             -map "[v]" \
             -map 1:a:0 \
             -c:v libx264 \
