@@ -1348,7 +1348,7 @@ jobs:
           if not assets:
               raise RuntimeError("No image or video visuals found.")
 
-          # If D-ID succeeded, show the lip-synced reporter first, then B-roll/photos.
+          # If a talking-reporter clip was generated, show it first, then B-roll/photos.
           transition_duration = 0.45
           if assets[0][0] == "reporter" and len(assets) > 1:
               reporter_duration = min(7.5, max(3.0, duration * 0.2))
@@ -1443,8 +1443,73 @@ jobs:
             -shortest \
             output/mr-ahlawat-short.mp4
 
-      - name: Save generated files
+      - name: Validate rendered Short before upload
+        id: quality
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, sys
+
+          out = os.environ["GITHUB_OUTPUT"]
+          with open(out, "a", encoding="utf-8") as f:
+              f.write("valid=false\\n")
+
+          video = "output/mr-ahlawat-short.mp4"
+          audio = "output/voiceover.wav"
+          captions = "output/captions.ass"
+          metadata = "output/metadata.json"
+
+          def fail(message):
+              print("QUALITY_CHECK_FAILED:", message)
+              raise SystemExit(1)
+
+          if not os.path.isfile(video) or os.path.getsize(video) < 100000:
+              fail("Final MP4 is missing or suspiciously small.")
+          if not os.path.isfile(audio) or os.path.getsize(audio) < 10000:
+              fail("Voice-over WAV is missing or suspiciously small.")
+          if not os.path.isfile(captions):
+              fail("Hindi captions file is missing.")
+          with open(captions, encoding="utf-8") as f:
+              caption_text = f.read()
+          caption_count = caption_text.count("Dialogue:")
+          if caption_count < 3:
+              fail(f"Too few caption segments: {caption_count}")
+          with open(metadata, encoding="utf-8") as f:
+              data = json.load(f)
+          title = str(data.get("title", "")).strip()
+          description = str(data.get("description", "")).strip()
+          if not title or len(title) > 100:
+              fail(f"YouTube title missing or over 100 characters (length={len(title)}).")
+          if not description:
+              fail("YouTube description is empty.")
+
+          probe = subprocess.run(
+              ["ffprobe", "-v", "error", "-show_streams", "-show_format",
+               "-of", "json", video],
+              check=True, capture_output=True, text=True
+          )
+          info = json.loads(probe.stdout)
+          streams = info.get("streams", [])
+          vstreams = [s for s in streams if s.get("codec_type") == "video"]
+          astreams = [s for s in streams if s.get("codec_type") == "audio"]
+          if not vstreams:
+              fail("Final MP4 has no video stream.")
+          if not astreams:
+              fail("Final MP4 has no audio stream.")
+          v = vstreams[0]
+          width, height = int(v.get("width", 0)), int(v.get("height", 0))
+          duration = float(info.get("format", {}).get("duration", 0))
+          if (width, height) != (1080, 1920):
+              fail(f"Expected 1080x1920 vertical video; got {width}x{height}.")
+          if duration < 10 or duration > 90:
+              fail(f"Duration outside expected 10-90 seconds: {duration:.2f}s.")
+          print(f"QUALITY_CHECK_PASSED: {width}x{height}, {duration:.1f}s, captions={caption_count}, audio=yes")
+          with open(out, "a", encoding="utf-8") as f:
+              f.write("valid=true\\n")
+          PY
+
+      - name: Save generated files
+        if: always() && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         uses: actions/upload-artifact@v6
         with:
           name: mr-ahlawat-ai-short
@@ -1452,7 +1517,7 @@ jobs:
           retention-days: 3
 
       - name: Upload video to YouTube
-        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        if: steps.quality.outputs.valid == 'true' && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         id: upload
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
