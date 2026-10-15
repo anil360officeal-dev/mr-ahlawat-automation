@@ -69,7 +69,7 @@ jobs:
           - Description should explain the topic and include relevant hashtags.
           - Return valid JSON only with these keys:
           - script, title, description, hashtags, visual_search_terms
-          - visual_search_terms must be a JSON array containing 3 short English search queries for relevant news photos or video B-roll.
+          - visual_search_terms must be a JSON array containing 3 short English search queries tied to THIS exact topic. Include the real person, place, event, company, product, or technology named in the topic whenever applicable. Do not return generic terms such as 'India news', 'technology background', or 'people talking'. Prefer queries that would find visuals of the exact event/person, then closely related context.
           """
 
           url = (
@@ -345,14 +345,28 @@ jobs:
           with open("output/metadata.json", encoding="utf-8") as f:
               metadata = json.load(f)
 
-          queries = metadata.get("visual_search_terms", [])
-          if isinstance(queries, str):
-              queries = [queries]
-          queries = [q.strip() for q in queries if isinstance(q, str) and q.strip()]
+          topic = os.environ.get("SHORT_TOPIC", "").strip()
+          title = str(metadata.get("title", "")).strip()
+          generated_queries = metadata.get("visual_search_terms", [])
+          if isinstance(generated_queries, str):
+              generated_queries = [generated_queries]
+          generated_queries = [
+              q.strip() for q in generated_queries
+              if isinstance(q, str) and q.strip()
+          ]
 
+          # Keep search focused on the requested topic. Topic-specific AI queries
+          # lead; title and original input are included as additional exact anchors.
+          queries = []
+          for q in generated_queries[:4] + [title, topic]:
+              q = q.strip() if isinstance(q, str) else ""
+              if q and q.lower() not in {item.lower() for item in queries}:
+                  queries.append(q)
           if not queries:
-              topic = os.environ.get("SHORT_TOPIC", "").strip()
-              queries = [topic] if topic else ["India news"]
+              raise RuntimeError("No topic-specific visual search queries were generated.")
+          print("TOPIC_FOCUSED_VISUAL_QUERIES:")
+          for q in queries:
+              print(" - " + q)
 
           session = requests.Session()
           session.headers.update({
@@ -498,27 +512,7 @@ jobs:
           print(f"WIKIMEDIA_IMAGES_DOWNLOADED: {saved}")
 
           if saved == 0:
-              print("Wikimedia is rate-limited; downloading real stock photos instead.")
-              stock_urls = [
-                  "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1080&h=1920&q=85",
-                  "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=1080&h=1920&q=85",
-                  "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1080&h=1920&q=85",
-                  "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1080&h=1920&q=85",
-                  "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1080&h=1920&q=85"
-              ]
-              for image_url in stock_urls:
-                  try:
-                      image = session.get(image_url, timeout=45)
-                      image.raise_for_status()
-                      if len(image.content) < 5000:
-                          continue
-                      saved += 1
-                      with open(f"output/media/image_{saved:02d}.jpg", "wb") as out:
-                          out.write(image.content)
-                      attribution.append("Unsplash stock photo | Source: https://unsplash.com/")
-                      print(f"Downloaded stock photo {saved}")
-                  except Exception as image_error:
-                      print(f"Stock-photo warning: {image_error}")
+              print("No topic-matched photos found; will use clearly designed newsroom graphics rather than unrelated stock photos.")
 
           if saved == 0:
               print("All photo sources failed; creating newsroom graphic fallback.")
