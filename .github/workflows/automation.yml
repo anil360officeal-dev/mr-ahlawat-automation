@@ -57,12 +57,13 @@ jobs:
           - Write the spoken script mainly in natural Devanagari Hindi, as a confident Indian TV news reporter would actually speak.
           - Avoid writing Hindi words in Roman letters. Keep only unavoidable names and technical terms in English; write common terms in Hindi phonetics when that improves pronunciation.
           - Sound like a lively Indian TV field reporter talking to viewers, not reading a written article.
-          - Vary the rhythm: deliver the opening hook briskly, slow slightly for important facts, and finish with a firm, energetic closing.
-          - Use short, conversational Hindi sentences, occasional direct viewer address, and natural rhetorical questions only when they fit the facts.
-          - Put emphasis on key facts through word choice and punctuation (?!, —, …); do not add stage directions such as [pause] because they may be spoken aloud.
-          - Use confident, lively language with human warmth and urgency, but never fake outrage, invent emotion, or sound theatrical.
-          - Script should be around 50–55 seconds when spoken (roughly 115–130 Hindi words).
-          - Avoid repetitive openings, filler phrases, long comma-heavy sentences, and generic AI-style phrases.
+          - Write for speech, not for reading: use crisp, conversational Hindi that sounds like a real Indian TV reporter speaking directly to viewers.
+          - Start with a sharp, energetic hook. Keep the explanation brisk, then give key facts a little breathing room, and end with a confident punch.
+          - Mix very short sentences with medium-length sentences so the delivery has natural rhythm rather than a repeated cadence.
+          - Use commas and full stops where a human speaker would breathe. Use a question only when it genuinely helps the story.
+          - Add warmth, conviction, and urgency through the wording, but do not shout, exaggerate, manufacture outrage, or invent facts.
+          - Avoid formal article language, repetitive filler, generic AI phrases, and unnecessary English words.
+          - Script should be around 48–55 seconds when spoken (roughly 110–125 Hindi words).
           - Include a strong opening hook, clear explanation, and a short closing line.
           - Do not make the script too short; aim for a full one-minute narration.
           - Do not invent facts, quotes, or breaking news.
@@ -193,8 +194,8 @@ jobs:
                   communicate = edge_tts.Communicate(
                       script,
                       "hi-IN-MadhurNeural",
-                      rate="+8%",
-                      pitch="+1Hz"
+                      rate="+12%",
+                      pitch="+2Hz"
                   )
                   await communicate.save("output/voiceover-edge.mp3")
 
@@ -221,10 +222,10 @@ jobs:
                   [
                       "piper",
                       "--model", "models/hi_IN-rohan-medium.onnx",
-                      "--length_scale", "0.88",
+                      "--length_scale", "0.82",
                       "--noise_scale", "0.60",
                       "--noise_w_scale", "0.75",
-                      "--sentence_silence", "0.16",
+                      "--sentence_silence", "0.12",
                       "--output_file", "output/voiceover.wav"
                   ],
                   input=script,
@@ -238,7 +239,7 @@ jobs:
               [
                   "ffmpeg", "-y",
                   "-i", source_audio,
-                  "-af", "highpass=f=75,lowpass=f=11000,equalizer=f=180:t=q:w=1:g=1.5,equalizer=f=3200:t=q:w=1:g=1.8,acompressor=threshold=-20dB:ratio=3:attack=10:release=100,loudnorm=I=-14.5:TP=-1.0:LRA=9",
+                  "-af", "highpass=f=75,lowpass=f=11000,equalizer=f=180:t=q:w=1:g=1.5,equalizer=f=2800:t=q:w=1:g=1.5,equalizer=f=4200:t=q:w=1:g=1.0,acompressor=threshold=-20dB:ratio=3:attack=8:release=90,loudnorm=I=-14:TP=-1.0:LRA=8",
                   "-b:a", "192k",
                   "output/voiceover.mp3"
               ],
