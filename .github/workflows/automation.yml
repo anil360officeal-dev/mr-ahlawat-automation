@@ -451,16 +451,16 @@ jobs:
           # Normalize hashtags before truncating so the title never loses its tags.
           import re
           title_original = str(data.get("title", "")).strip()
-          title_tags = re.findall(r"#(?:[A-Za-z0-9_]+|[\\u0900-\\u097F]+)", title_original)
+          title_tags = re.findall(r"#(?:[A-Za-z0-9_]+|[\u0900-\u097F]+)", title_original)
           raw_tags = data.get("hashtags", [])
           if isinstance(raw_tags, str):
-              raw_tags = re.findall(r"#(?:[A-Za-z0-9_]+|[\\u0900-\\u097F]+)", raw_tags)
+              raw_tags = re.findall(r"#(?:[A-Za-z0-9_]+|[\u0900-\u097F]+)", raw_tags)
           if not isinstance(raw_tags, list):
               raw_tags = []
           tags = []
           for item in list(raw_tags) + title_tags:
               value = str(item).strip()
-              found = re.findall(r"#?(?:[A-Za-z0-9_]+|[\\u0900-\\u097F]+)", value)
+              found = re.findall(r"#?(?:[A-Za-z0-9_]+|[\u0900-\u097F]+)", value)
               if found:
                   tag = "#" + found[0].lstrip("#")
                   if tag.lower() not in [t.lower() for t in tags]:
@@ -471,8 +471,8 @@ jobs:
               if fallback.lower() not in [t.lower() for t in tags]:
                   tags.append(fallback)
           tags = tags[:3]
-          title_base = re.sub(r"#(?:[A-Za-z0-9_]+|[\\u0900-\\u097F]+)", "", title_original)
-          title_base = re.sub(r"\\s+", " ", title_base).strip(" -|•")
+          title_base = re.sub(r"#(?:[A-Za-z0-9_]+|[\u0900-\u097F]+)", "", title_original)
+          title_base = re.sub(r"\s+", " ", title_base).strip(" -|•")
           suffix = " ".join(tags)
           while title_base and len(title_base + " " + suffix) > 100:
               title_base = title_base[:-1].rstrip()
