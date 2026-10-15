@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Restore daily upload counter
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .github/daily-upload-count.json
           key: daily-upload-count-${{ github.run_id }}
@@ -61,7 +61,7 @@ jobs:
 
       - name: Restore CJP duplicate-post state
         if: github.event_name == 'schedule' && steps.daily.outputs.allowed != 'false'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .github/cjp-seen.json
           key: cjp-seen-${{ github.run_id }}
@@ -1439,14 +1439,14 @@ jobs:
 
       - name: Save daily upload counter
         if: steps.upload.outputs.uploaded == 'true' && success()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .github/daily-upload-count.json
           key: daily-upload-count-${{ github.run_id }}
 
       - name: Save CJP duplicate state after successful upload
         if: github.event_name == 'schedule' && steps.cjp.outputs.should_run == 'true' && steps.upload.outputs.uploaded == 'true' && success()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .github/cjp-seen.json
           key: cjp-seen-${{ github.run_id }}
