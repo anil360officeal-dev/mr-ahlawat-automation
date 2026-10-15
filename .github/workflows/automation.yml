@@ -53,8 +53,10 @@ jobs:
           Topic: {topic}
 
           Rules:
-          - Natural, engaging Hindi/Hinglish, suitable for a professional Hindi TV news report.
-          - Script should be around 55–60 seconds when spoken naturally (roughly 110–130 Hindi words).
+          - Write like a real Indian field reporter speaking naturally to camera, not like a formal article or AI announcement.
+          - Use conversational Hindi/Hinglish, varied sentence lengths, contractions and natural spoken phrasing.
+          - Script should be around 55–60 seconds when spoken naturally (roughly 110–130 words).
+          - Add natural punctuation and short pauses; avoid long comma-heavy sentences and repeated filler.
           - Include a strong opening hook, clear explanation, and a short closing line.
           - Do not make the script too short; aim for a full one-minute narration.
           - Do not invent facts, quotes, or breaking news.
@@ -186,6 +188,10 @@ jobs:
               [
                   "piper",
                   "--model", "models/hi_IN-rohan-medium.onnx",
+                  "--length_scale", "0.96",
+                  "--noise_scale", "0.60",
+                  "--noise_w_scale", "0.75",
+                  "--sentence_silence", "0.22",
                   "--output_file", "output/voiceover.wav"
               ],
               input=script,
@@ -197,6 +203,8 @@ jobs:
               [
                   "ffmpeg", "-y",
                   "-i", "output/voiceover.wav",
+                  "-af", "highpass=f=75,lowpass=f=11000,equalizer=f=180:t=q:w=1:g=1.5,equalizer=f=3200:t=q:w=1:g=1.2,acompressor=threshold=-18dB:ratio=2.5:attack=15:release=120,loudnorm=I=-16:TP=-1.5:LRA=11",
+                  "-b:a", "192k",
                   "output/voiceover.mp3"
               ],
               check=True
