@@ -53,8 +53,10 @@ jobs:
           Topic: {topic}
 
           Rules:
-          - Natural, engaging Hindi/Hinglish.
-          - Script should be around 30 seconds.
+          - Natural, engaging Hindi/Hinglish, suitable for a professional Hindi TV news report.
+          - Script should be around 55–60 seconds when spoken naturally (roughly 110–130 Hindi words).
+          - Include a strong opening hook, clear explanation, and a short closing line.
+          - Do not make the script too short; aim for a full one-minute narration.
           - Do not invent facts, quotes, or breaking news.
           - Title must be under 100 characters and include 3 relevant hashtags.
           - Description should explain the topic and include relevant hashtags.
