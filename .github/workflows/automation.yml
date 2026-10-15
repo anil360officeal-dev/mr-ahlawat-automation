@@ -265,7 +265,8 @@ jobs:
                       "id": post_id, "text": text, "url": post_url,
                       "createdAt": post.get("createdAt", ""),
                       "author": post.get("author", {}),
-                      "corroborating_articles": matches[:3]
+                      "corroborating_articles": matches[:3],
+                  "raw_post": post
                   }
                   break
 
@@ -839,8 +840,21 @@ jobs:
           if is_protest_story:
               import xml.etree.ElementTree as ET
               import glob
-              social_queries = [topic + " protest site:facebook.com/reel OR site:facebook.com/watch", topic + " protest site:instagram.com/reel OR site:instagram.com/p"]
+              social_queries = [
+                  topic + " protest site:facebook.com/reel OR site:facebook.com/watch",
+                  topic + " protest site:instagram.com/reel OR site:instagram.com/p",
+                  topic + " protest site:x.com OR site:twitter.com"
+              ]
               social_urls = []
+              # Use the selected X post itself first, including any attached public media.
+              try:
+                  with open("output/cjp_source.json", encoding="utf-8") as source_file:
+                      selected_source = json.load(source_file)
+                  selected_x_url = str(selected_source.get("url", "")).strip()
+                  if selected_x_url.startswith(("https://x.com/", "https://twitter.com/")):
+                      social_urls.append(selected_x_url)
+              except Exception as source_error:
+                  print("Selected X source URL unavailable:", source_error)
               for social_query in social_queries:
                   try:
                       rss = session.get("https://www.bing.com/search", params={"format": "rss", "q": social_query}, timeout=25)
@@ -853,14 +867,17 @@ jobs:
                           lower = link.lower()
                           is_fb = "facebook.com/" in lower and any(part in lower for part in ("/reel", "/watch", "/videos/"))
                           is_ig = "instagram.com/" in lower and any(part in lower for part in ("/reel/", "/p/", "/tv/"))
-                          if (is_fb or is_ig) and link not in social_urls:
+                          is_x = ("x.com/" in lower or "twitter.com/" in lower) and ("/status/" in lower)
+                          if (is_fb or is_ig or is_x) and link not in social_urls:
                               social_urls.append(link)
                   except Exception as search_error:
                       print("Public social-post search warning:", search_error)
-              print("PUBLIC_FACEBOOK_INSTAGRAM_POSTS_FOUND:", len(social_urls))
+              print("PUBLIC_FACEBOOK_INSTAGRAM_X_POSTS_FOUND:", len(social_urls))
               social_image_count = 0
               for post_url in social_urls[:5]:
-                  prefix = "facebook" if "facebook.com" in post_url.lower() else "instagram"
+                  lower_post_url = post_url.lower()
+                  prefix = ("facebook" if "facebook.com" in lower_post_url else
+                            "instagram" if "instagram.com" in lower_post_url else "x")
                   try:
                       # First try the post thumbnail as a still image; it may work when video download is blocked.
                       thumb_template = f"output/media/social_thumb_{prefix}_%(id)s.%(ext)s"
@@ -1207,7 +1224,10 @@ jobs:
               f.write(("  •  BREAKING UPDATE  •  " + ticker + "  •  ")[:240])
 
           video_clips = sorted(glob.glob("output/media/clip_*.mp4"))[:2]
-          images = sorted(glob.glob("output/media/image_*"))[:5]
+          # Include stills extracted from public X/Facebook/Instagram posts too.
+          images = (sorted(glob.glob("output/media/image_*"))[:3] +
+                    sorted(glob.glob("output/media/social_image_*"))[:2])
+          images = images[:5]
           reporter_path = "output/media/reporter_intro.mp4"
           assets = ([("reporter", reporter_path)] if os.path.exists(reporter_path) else [])
           assets += [("video", path) for path in video_clips] + [
