@@ -217,6 +217,63 @@ jobs:
           PY
     
 
+      - name: Generate free Hindi voice comparison samples
+        continue-on-error: true
+        run: |
+          set -e
+          mkdir -p models output
+
+          # Keep the production voiceover.mp3 untouched. Create a separate Pratham sample
+          # so both free Hindi male voices can be compared from the workflow artifact.
+          cp output/voiceover.mp3 output/voice-test-rohan.mp3
+
+          BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/pratham/medium"
+          curl -fL --retry 3 "$BASE/hi_IN-pratham-medium.onnx" -o models/hi_IN-pratham-medium.onnx
+          curl -fL --retry 3 "$BASE/hi_IN-pratham-medium.onnx.json" -o models/hi_IN-pratham-medium.onnx.json
+
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          with open("output/metadata.json", encoding="utf-8") as f:
+              script = json.load(f)["script"].strip()
+
+          if not script:
+              raise RuntimeError("Voice comparison script is empty")
+
+          subprocess.run(
+              [
+                  "piper",
+                  "--model", "models/hi_IN-pratham-medium.onnx",
+                  "--length_scale", "0.94",
+                  "--noise_scale", "0.60",
+                  "--noise_w_scale", "0.75",
+                  "--sentence_silence", "0.26",
+                  "--output_file", "output/voice-test-pratham.wav"
+              ],
+              input=script,
+              text=True,
+              check=True
+          )
+
+          subprocess.run(
+              [
+                  "ffmpeg", "-y", "-i", "output/voice-test-pratham.wav",
+                  "-af", "highpass=f=75,lowpass=f=11000,equalizer=f=180:t=q:w=1:g=1.5,equalizer=f=3200:t=q:w=1:g=1.2,acompressor=threshold=-18dB:ratio=2.5:attack=15:release=120,loudnorm=I=-16:TP=-1.5:LRA=11",
+                  "-b:a", "192k", "output/voice-test-pratham.mp3"
+              ],
+              check=True
+          )
+
+          for name in ("output/voice-test-rohan.mp3", "output/voice-test-pratham.mp3"):
+              if not os.path.exists(name) or os.path.getsize(name) < 1000:
+                  raise RuntimeError(f"Voice comparison sample missing or too small: {name}")
+
+          print("VOICE_COMPARISON_SAMPLES_READY")
+          print("Compare output/voice-test-rohan.mp3 with output/voice-test-pratham.mp3 in the workflow artifact.")
+          PY
+
       - name: Download relevant Wikimedia images
         env:
           SHORT_TOPIC: ${{ inputs.topic }}
