@@ -474,6 +474,160 @@ jobs:
           print(f"VISUAL_FILES_READY: {len(visuals)}")
           PY
 
+      - name: Generate optional D-ID field reporter intro
+        env:
+          DID_API_KEY: \${{ secrets.DID_API_KEY }}
+          PIXABAY_API_KEY: \${{ secrets.PIXABAY_API_KEY }}
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          import os
+          import time
+          import json
+          import requests
+          import subprocess
+
+          api_key = os.environ.get("DID_API_KEY", "").strip()
+          pixabay_key = os.environ.get("PIXABAY_API_KEY", "").strip()
+          media_dir = "output/media"
+          os.makedirs(media_dir, exist_ok=True)
+
+          if not api_key:
+              print("D-ID intro skipped: DID_API_KEY secret is not configured.")
+              raise SystemExit(0)
+          if not pixabay_key:
+              print("D-ID intro skipped: PIXABAY_API_KEY is not configured for reporter portrait search.")
+              raise SystemExit(0)
+
+          session = requests.Session()
+          session.headers.update({"accept": "application/json"})
+
+          try:
+              # Find a suitable portrait photo for a generic AI field reporter.
+              search = session.get(
+                  "https://pixabay.com/api/",
+                  params={
+                      "key": pixabay_key,
+                      "q": "male news reporter microphone",
+                      "image_type": "photo",
+                      "orientation": "vertical",
+                      "safesearch": "true",
+                      "per_page": 10
+                  },
+                  timeout=30
+              )
+              search.raise_for_status()
+              hits = search.json().get("hits", [])
+              if not hits:
+                  print("D-ID intro skipped: no reporter portrait found.")
+                  raise SystemExit(0)
+
+              portrait_path = os.path.join(media_dir, "reporter_portrait.jpg")
+              portrait_url = None
+              for hit in hits:
+                  candidate = hit.get("largeImageURL") or hit.get("webformatURL")
+                  if not candidate:
+                      continue
+                  response = session.get(candidate, timeout=45)
+                  response.raise_for_status()
+                  if len(response.content) > 5000:
+                      with open(portrait_path, "wb") as out:
+                          out.write(response.content)
+                      break
+              if not os.path.exists(portrait_path):
+                  print("D-ID intro skipped: reporter portrait download failed.")
+                  raise SystemExit(0)
+
+              auth = {"Authorization": "Basic " + api_key, "accept": "application/json"}
+
+              with open(portrait_path, "rb") as photo:
+                  uploaded_image = session.post(
+                      "https://api.d-id.com/images",
+                      headers=auth,
+                      files={"image": ("reporter.jpg", photo, "image/jpeg")},
+                      timeout=60
+                  )
+              uploaded_image.raise_for_status()
+              image_data = uploaded_image.json()
+              portrait_url = image_data.get("url") or image_data.get("image_url")
+              if not portrait_url:
+                  raise RuntimeError("D-ID image upload response did not contain a URL")
+
+              # Use the exact existing Hindi voice-over, limited to a short intro.
+              intro_audio = os.path.join(media_dir, "reporter_intro.wav")
+              subprocess.run([
+                  "ffmpeg", "-y", "-i", "output/voiceover.wav",
+                  "-t", "7.5", "-ac", "1", "-ar", "16000", intro_audio
+              ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+
+              if os.path.getsize(intro_audio) > 6 * 1024 * 1024:
+                  raise RuntimeError("D-ID intro audio exceeds the 6 MB upload limit")
+
+              with open(intro_audio, "rb") as audio:
+                  uploaded_audio = session.post(
+                      "https://api.d-id.com/audios",
+                      headers=auth,
+                      files={"audio": ("reporter_intro.wav", audio, "audio/wav")},
+                      timeout=60
+                  )
+              uploaded_audio.raise_for_status()
+              audio_data = uploaded_audio.json()
+              audio_url = audio_data.get("url") or audio_data.get("audio_url")
+              if not audio_url:
+                  raise RuntimeError("D-ID audio upload response did not contain a URL")
+
+              created = session.post(
+                  "https://api.d-id.com/talks",
+                  headers={**auth, "content-type": "application/json"},
+                  json={
+                      "source_url": portrait_url,
+                      "script": {"type": "audio", "audio_url": audio_url},
+                      "name": "Mr Ahlawat Ground Report Intro"
+                  },
+                  timeout=60
+              )
+              created.raise_for_status()
+              talk_id = created.json().get("id")
+              if not talk_id:
+                  raise RuntimeError("D-ID create-talk response did not contain an ID")
+
+              result_url = None
+              for attempt in range(36):
+                  status_response = session.get(
+                      f"https://api.d-id.com/talks/{talk_id}",
+                      headers=auth,
+                      timeout=30
+                  )
+                  status_response.raise_for_status()
+                  status_data = status_response.json()
+                  status = status_data.get("status", "")
+                  if status == "done":
+                      result_url = status_data.get("result_url")
+                      break
+                  if status in ("error", "rejected"):
+                      raise RuntimeError("D-ID returned status: " + status)
+                  time.sleep(5)
+
+              if not result_url:
+                  raise RuntimeError("D-ID reporter intro did not finish within 3 minutes")
+
+              video_response = session.get(result_url, timeout=90)
+              video_response.raise_for_status()
+              output_path = os.path.join(media_dir, "reporter_intro.mp4")
+              with open(output_path, "wb") as out:
+                  out.write(video_response.content)
+              if os.path.getsize(output_path) < 10000:
+                  os.remove(output_path)
+                  raise RuntimeError("D-ID reporter video file is unexpectedly small")
+
+              print("DID_REPORTER_INTRO_SUCCESS")
+          except SystemExit:
+              raise
+          except Exception as error:
+              print("D-ID reporter intro unavailable; continuing with existing visuals.")
+              print(type(error).__name__ + ": " + str(error))
+          PY
+
       - name: Create Ground Report video with Hindi captions
         run: |
           set -e
@@ -559,22 +713,34 @@ jobs:
 
           video_clips = sorted(glob.glob("output/media/clip_*.mp4"))[:2]
           images = sorted(glob.glob("output/media/image_*"))[:5]
-          assets = [("video", path) for path in video_clips] + [
+          reporter_path = "output/media/reporter_intro.mp4"
+          assets = ([("reporter", reporter_path)] if os.path.exists(reporter_path) else [])
+          assets += [("video", path) for path in video_clips] + [
               ("image", path) for path in images
           ]
 
           if not assets:
               raise RuntimeError("No image or video visuals found.")
 
-          # Mix moving B-roll with photos. Video clips come first, followed by photos.
+          # If D-ID succeeded, show the lip-synced reporter first, then B-roll/photos.
           transition_duration = 0.45
-          segment_duration = (
-              duration + transition_duration * (len(assets) - 1)
-          ) / len(assets)
-          args = ["ffmpeg", "-y"]
+          if assets[0][0] == "reporter" and len(assets) > 1:
+              reporter_duration = min(7.5, max(3.0, duration * 0.2))
+              remaining_duration = (
+                  duration + transition_duration * (len(assets) - 1) - reporter_duration
+              ) / (len(assets) - 1)
+              segment_durations = [reporter_duration] + [
+                  remaining_duration for _ in assets[1:]
+              ]
+          else:
+              segment_duration = (
+                  duration + transition_duration * (len(assets) - 1)
+              ) / len(assets)
+              segment_durations = [segment_duration] * len(assets)
 
-          for kind, path in assets:
-              if kind == "video":
+          args = ["ffmpeg", "-y"]
+          for (kind, path), segment_duration in zip(assets, segment_durations):
+              if kind in ("video", "reporter"):
                   args += ["-stream_loop", "-1", "-i", path]
               else:
                   args += ["-loop", "1", "-framerate", "30",
@@ -583,9 +749,9 @@ jobs:
           filters = []
           labels = []
 
-          for i, (kind, path) in enumerate(assets):
+          for i, ((kind, path), segment_duration) in enumerate(zip(assets, segment_durations)):
               label = f"v{i}"
-              if kind == "video":
+              if kind in ("video", "reporter"):
                   filters.append(
                       f"[{i}:v]trim=duration={segment_duration:.3f},"
                       f"setpts=PTS-STARTPTS,scale=1080:1920:"
@@ -608,7 +774,7 @@ jobs:
           previous = labels[0]
           for i in range(1, len(labels)):
               output_label = f"xf{i}"
-              offset = i * (segment_duration - transition_duration)
+              offset = sum(segment_durations[:i]) - i * transition_duration
               filters.append(
                   f"{previous}{labels[i]}"
                   f"xfade=transition=fade:duration={transition_duration}:"
