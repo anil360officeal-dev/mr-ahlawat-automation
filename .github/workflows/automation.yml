@@ -476,8 +476,8 @@ jobs:
 
       - name: Generate optional D-ID field reporter intro
         env:
-          DID_API_KEY: \${{ secrets.DID_API_KEY }}
-          PIXABAY_API_KEY: \${{ secrets.PIXABAY_API_KEY }}
+          DID_API_KEY: ${{ secrets.DID_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         continue-on-error: true
         run: |
           python - <<'PY'
