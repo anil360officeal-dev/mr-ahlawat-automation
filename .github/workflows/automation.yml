@@ -825,6 +825,7 @@ jobs:
               except Exception as e:
                   print(f"Search warning for '{search_term}': {e}")
           
+          video_count = 0
           # Free Wikimedia Commons moving-footage fallback; no API key required.
           # Use it for protest stories, while preserving creator/license attribution.
           if is_protest_story:
@@ -897,7 +898,6 @@ jobs:
 
           # Try to add genuine moving B-roll from Pixabay when its API key is configured.
           video_key = os.environ.get("PIXABAY_API_KEY", "").strip()
-          video_count = 0
           if video_key:
               for search_term in queries[:3]:
                   if video_count >= 2:
