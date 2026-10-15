@@ -1073,13 +1073,6 @@ jobs:
                       for hit in hits:
                           if video_count >= 2:
                               break
-                          tags = str(hit.get("tags", "")).lower()
-                          if not any(word in tags for word in (
-                              "reporter", "journalist", "interview", "microphone",
-                              "selfie", "vlog", "news"
-                          )):
-                              print("SKIP_UNRELATED_VIDEO:", tags[:160])
-                              continue
                           variants = hit.get("videos", {})
                           clip = variants.get("medium") or variants.get("small") or variants.get("large")
                           if not clip or not clip.get("url"):
@@ -1167,6 +1160,13 @@ jobs:
                   response.raise_for_status()
                   hits = response.json().get("hits", [])
                   for hit in hits:
+                      tags = str(hit.get("tags", "")).lower()
+                      if not any(word in tags for word in (
+                          "reporter", "journalist", "interview", "microphone",
+                          "selfie", "vlog", "news"
+                      )):
+                          print("SKIP_UNRELATED_REPORTER_VIDEO:", tags[:160])
+                          continue
                       variants = hit.get("videos", {})
                       candidate = variants.get("medium") or variants.get("small") or variants.get("large")
                       if not candidate or not candidate.get("url"):
