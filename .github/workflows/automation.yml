@@ -193,7 +193,7 @@ jobs:
                       script,
                       "hi-IN-MadhurNeural",
                       rate="+12%",
-                      pitch="+0Hz"
+                      pitch="+2Hz"
                   )
                   await communicate.save("output/voiceover-edge.mp3")
 
