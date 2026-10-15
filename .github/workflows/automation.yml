@@ -28,7 +28,7 @@ jobs:
       - name: Install Python libraries
         run: |
           python -m pip install --upgrade pip
-          pip install requests piper-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib
+          pip install requests piper-tts edge-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
       - name: Generate Hindi Short with Gemini AI
         env:
@@ -54,8 +54,11 @@ jobs:
 
           Rules:
           - Write like a real Indian field reporter speaking naturally to camera, not like a formal article or AI announcement.
-          - Use conversational Hindi/Hinglish, varied sentence lengths, contractions and natural spoken phrasing.
-          - Script should be around 55–60 seconds when spoken naturally (roughly 110–130 words).
+          - Write the spoken script mainly in natural Devanagari Hindi, as a confident Indian TV news reporter would actually speak.
+          - Avoid writing Hindi words in Roman letters. Keep only unavoidable names and technical terms in English; write common terms in Hindi phonetics when that improves pronunciation.
+          - Use short, punchy spoken sentences, varied rhythm, natural pauses, and clear pronunciation-friendly punctuation.
+          - Sound authoritative and energetic, but not theatrical, robotic, or like a formal article.
+          - Script should be around 55–60 seconds when spoken naturally (roughly 110–130 Hindi words).
           - Add natural punctuation and short pauses; avoid long comma-heavy sentences and repeated filler.
           - Include a strong opening hook, clear explanation, and a short closing line.
           - Do not make the script too short; aim for a full one-minute narration.
@@ -164,18 +167,11 @@ jobs:
           set -e
           mkdir -p models output
 
-          BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/rohan/medium"
-
-          curl -fL "$BASE/hi_IN-rohan-medium.onnx" \
-            -o models/hi_IN-rohan-medium.onnx
-
-          curl -fL "$BASE/hi_IN-rohan-medium.onnx.json" \
-            -o models/hi_IN-rohan-medium.onnx.json
-
           python - <<'PY'
+          import asyncio
           import json
-          import subprocess
           import os
+          import subprocess
 
           with open("output/metadata.json", encoding="utf-8") as f:
               data = json.load(f)
@@ -184,25 +180,61 @@ jobs:
           if not script:
               raise RuntimeError("AI script is empty")
 
-          subprocess.run(
-              [
-                  "piper",
-                  "--model", "models/hi_IN-rohan-medium.onnx",
-                  "--length_scale", "0.96",
-                  "--noise_scale", "0.60",
-                  "--noise_w_scale", "0.75",
-                  "--sentence_silence", "0.22",
-                  "--output_file", "output/voiceover.wav"
-              ],
-              input=script,
-              text=True,
-              check=True
-          )
+          # First try Microsoft's free Hindi neural voice. If its service is
+          # unavailable (for example HTTP 403), fall back to the known Piper voice.
+          source_audio = None
+          try:
+              import edge_tts
+
+              async def make_neural_voice():
+                  communicate = edge_tts.Communicate(
+                      script,
+                      "hi-IN-MadhurNeural",
+                      rate="-5%",
+                      pitch="-2Hz"
+                  )
+                  await communicate.save("output/voiceover-edge.mp3")
+
+              asyncio.run(make_neural_voice())
+              if os.path.getsize("output/voiceover-edge.mp3") > 1000:
+                  source_audio = "output/voiceover-edge.mp3"
+                  print("VOICE_ENGINE=edge-tts hi-IN-MadhurNeural")
+          except Exception as e:
+              print("Neural Hindi voice unavailable; using Piper fallback:", repr(e))
+
+          if source_audio is None:
+              BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/rohan/medium"
+              subprocess.run(
+                  ["curl", "-fL", BASE + "/hi_IN-rohan-medium.onnx",
+                   "-o", "models/hi_IN-rohan-medium.onnx"],
+                  check=True
+              )
+              subprocess.run(
+                  ["curl", "-fL", BASE + "/hi_IN-rohan-medium.onnx.json",
+                   "-o", "models/hi_IN-rohan-medium.onnx.json"],
+                  check=True
+              )
+              subprocess.run(
+                  [
+                      "piper",
+                      "--model", "models/hi_IN-rohan-medium.onnx",
+                      "--length_scale", "0.96",
+                      "--noise_scale", "0.60",
+                      "--noise_w_scale", "0.75",
+                      "--sentence_silence", "0.22",
+                      "--output_file", "output/voiceover.wav"
+                  ],
+                  input=script,
+                  text=True,
+                  check=True
+              )
+              source_audio = "output/voiceover.wav"
+              print("VOICE_ENGINE=piper hi_IN-rohan-medium")
 
           subprocess.run(
               [
                   "ffmpeg", "-y",
-                  "-i", "output/voiceover.wav",
+                  "-i", source_audio,
                   "-af", "highpass=f=75,lowpass=f=11000,equalizer=f=180:t=q:w=1:g=1.5,equalizer=f=3200:t=q:w=1:g=1.2,acompressor=threshold=-18dB:ratio=2.5:attack=15:release=120,loudnorm=I=-16:TP=-1.5:LRA=11",
                   "-b:a", "192k",
                   "output/voiceover.mp3"
