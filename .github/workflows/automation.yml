@@ -8,6 +8,8 @@ on:
         required: true
         default: "भारत और दुनिया की टेक्नोलॉजी पर एक रोचक खबर"
         type: string
+  schedule:
+    - cron: "17,47 * * * *"
 
 permissions:
   contents: read
@@ -20,20 +22,205 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Restore CJP duplicate-post state
+        if: github.event_name == 'schedule'
+        uses: actions/cache/restore@v4
+        with:
+          path: .github/cjp-seen.json
+          key: cjp-seen-${{ github.run_id }}
+          restore-keys: |
+            cjp-seen-
+
+      - name: Select and verify CJP post
+        id: cjp
+        if: github.event_name == 'schedule'
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import time
+          import urllib.parse
+          import urllib.request
+          import urllib.error
+          import xml.etree.ElementTree as ET
+          from datetime import datetime, timezone, timedelta
+          from email.utils import parsedate_to_datetime
+          from urllib.parse import urlparse
+
+          out_path = os.environ["GITHUB_OUTPUT"]
+          state_path = ".github/cjp-seen.json"
+          os.makedirs("output", exist_ok=True)
+          try:
+              with open(state_path, encoding="utf-8") as f:
+                  state = json.load(f)
+          except (OSError, json.JSONDecodeError):
+              state = {"ids": []}
+          seen = set(str(v) for v in state.get("ids", []))
+
+          def output(key, value):
+              with open(out_path, "a", encoding="utf-8") as f:
+                  f.write(f"{key}={str(value).replace(chr(10), ' ').replace(chr(13), ' ')}\n")
+
+          def get_json(url):
+              req = urllib.request.Request(
+                  url, headers={"Accept": "application/json",
+                                "User-Agent": "MrAhlawatShorts/1.0"}
+              )
+              with urllib.request.urlopen(req, timeout=25) as response:
+                  return json.loads(response.read().decode("utf-8"))
+
+          def words(text):
+              return set(re.findall(r"[A-Za-z0-9\u0900-\u097F]+", text.lower()))
+
+          stop = {
+              "cjp", "the", "and", "for", "with", "from", "that", "this",
+              "have", "has", "was", "were", "are", "its", "into", "about",
+              "after", "before", "over", "under", "their", "they", "them",
+              "protest", "protests", "government", "india", "indian", "news",
+              "update", "today", "latest", "viral", "breaking", "people",
+              "says", "said", "claims", "claim", "video", "post", "https",
+              "पर", "और", "का", "की", "के", "को", "से", "में", "है", "हैं",
+              "एक", "यह", "कि", "भी", "लिए", "द्वारा", "आज", "कल", "अब",
+          }
+          trusted_domains = (
+              "reuters.com", "thehindu.com", "indianexpress.com", "ndtv.com",
+              "hindustantimes.com", "indiatimes.com", "indiatoday.in",
+              "theprint.in", "scroll.in", "news18.com", "barandbench.com",
+              "livelaw.in", "tribuneindia.com", "aninews.in", "ptinews.in",
+              "bbc.com", "bbc.co.uk", "thewire.in", "newslaundry.com",
+              "deccanherald.com", "outlookindia.com", "thequint.com",
+              "telegraphindia.com", "livemint.com", "moneycontrol.com"
+          )
+
+          # One low-frequency public search per scheduled run; no official X API key.
+          search_url = "https://unifapi.com/tools/x/search?" + urllib.parse.urlencode({
+              "q": "CJP -filter:replies"
+          })
+          try:
+              payload = get_json(search_url)
+          except Exception as e:
+              print("CJP_X_SEARCH_UNAVAILABLE:", repr(e))
+              output("should_run", "false")
+              raise SystemExit(0)
+
+          items = payload.get("posts", {}).get("items", [])
+          if not isinstance(items, list):
+              items = []
+          print("CJP_X_POSTS_RETURNED:", len(items))
+          now = datetime.now(timezone.utc)
+          selected = None
+
+          for post in items[:20]:
+              post_id = str(post.get("id", "")).strip()
+              text = str(post.get("text", "")).strip()
+              post_url = str(post.get("url", "")).strip()
+              if not post_id or post_id in seen or not text or not post_url:
+                  continue
+              if "cjp" not in text.lower():
+                  continue
+
+              substantive = [
+                  t for t in words(text)
+                  if len(t) >= 4 and t not in stop and not t.isdigit()
+              ]
+              if not substantive:
+                  continue
+
+              # Verify against a recent independent news article from an established outlet.
+              # A social post alone is never treated as confirmation.
+              query_terms = ["CJP"] + substantive[:5]
+              rss_query = urllib.parse.quote(" ".join(query_terms))
+              rss_url = (
+                  "https://news.google.com/rss/search?q=" + rss_query
+                  + "&hl=en-IN&gl=IN&ceid=IN:en"
+              )
+              try:
+                  req = urllib.request.Request(
+                      rss_url, headers={"User-Agent": "Mozilla/5.0 MrAhlawatShorts/1.0"}
+                  )
+                  with urllib.request.urlopen(req, timeout=20) as response:
+                      xml_data = response.read()
+                  root = ET.fromstring(xml_data)
+              except Exception as e:
+                  print("NEWS_CORROBORATION_SEARCH_WARNING:", repr(e))
+                  continue
+
+              matches = []
+              for item in root.findall(".//item")[:15]:
+                  article_title = (item.findtext("title") or "").strip()
+                  article_link = (item.findtext("link") or "").strip()
+                  source_node = item.find("source")
+                  source_name = source_node.text.strip() if source_node is not None and source_node.text else ""
+                  source_url = source_node.get("url", "") if source_node is not None else ""
+                  domain = (urlparse(source_url or article_link).hostname or "").lower()
+                  if not any(domain == d or domain.endswith("." + d) for d in trusted_domains):
+                      continue
+                  pub_date = item.findtext("pubDate") or ""
+                  try:
+                      published = parsedate_to_datetime(pub_date)
+                      if published.tzinfo is None:
+                          published = published.replace(tzinfo=timezone.utc)
+                      if now - published.astimezone(timezone.utc) > timedelta(days=7):
+                          continue
+                  except Exception:
+                      continue
+                  title_words = words(article_title)
+                  overlap = (set(substantive) & title_words)
+                  if len(overlap) >= 2:
+                      matches.append({
+                          "title": article_title, "url": article_link,
+                          "source": source_name, "matched_terms": sorted(overlap)
+                      })
+              if matches:
+                  selected = {
+                      "id": post_id, "text": text, "url": post_url,
+                      "createdAt": post.get("createdAt", ""),
+                      "author": post.get("author", {}),
+                      "corroborating_articles": matches[:3]
+                  }
+                  break
+
+          if not selected:
+              print("NO_CJP_POST_CORROBORATED_BY_RECENT_TRUSTED_NEWS; skipping upload.")
+              output("should_run", "false")
+              raise SystemExit(0)
+
+          # Persist the selected ID in the cache file; cache is saved only after successful upload.
+          seen.add(selected["id"])
+          state["ids"] = list(seen)[-5000:]
+          with open(state_path, "w", encoding="utf-8") as f:
+              json.dump(state, f, ensure_ascii=False, indent=2)
+          with open("output/cjp_source.json", "w", encoding="utf-8") as f:
+              json.dump(selected, f, ensure_ascii=False, indent=2)
+
+          topic = "CJP-related update: " + selected["text"][:500]
+          output("should_run", "true")
+          output("topic", topic)
+          output("post_id", selected["id"])
+          print("CJP_POST_SELECTED:", selected["url"])
+          print("INDEPENDENT_NEWS_MATCHES:", len(selected["corroborating_articles"]))
+          for article in selected["corroborating_articles"]:
+              print("CORROBORATING_SOURCE:", article["source"], article["url"])
+          PY
+
       - name: Install FFmpeg
+        if: steps.cjp.outputs.should_run != 'false'
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
       - name: Install Python libraries
+        if: steps.cjp.outputs.should_run != 'false'
         run: |
           python -m pip install --upgrade pip
           pip install requests piper-tts edge-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
       - name: Generate Hindi Short with Gemini AI
+        if: steps.cjp.outputs.should_run != 'false'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SHORT_TOPIC: ${{ inputs.topic }}
+          SHORT_TOPIC: ${{ steps.cjp.outputs.topic || inputs.topic }}
         run: |
           python - <<'PY'
           import os
@@ -42,6 +229,10 @@ jobs:
 
           api_key = os.environ.get("GEMINI_API_KEY", "").strip()
           topic = os.environ.get("SHORT_TOPIC", "").strip()
+          source_context = {}
+          if os.path.exists("output/cjp_source.json"):
+              with open("output/cjp_source.json", encoding="utf-8") as source_file:
+                  source_context = json.load(source_file)
 
           if not api_key:
               raise RuntimeError("GEMINI_API_KEY secret is missing")
@@ -51,6 +242,15 @@ jobs:
           for the Hindi/Hinglish channel Mr Ahlawat.
 
           Topic: {topic}
+
+          X source post and independent corroborating coverage (empty for manual topic runs):
+          {json.dumps(source_context, ensure_ascii=False)}
+
+          Verification rules:
+          - Treat the X post as a lead, not as proof. Only state factual claims supported by the corroborating articles above.
+          - If the post makes claims not supported by those articles, omit them or clearly attribute them as unconfirmed claims in the post.
+          - Do not invent quotes, dates, arrests, motives, identities, or event details. Include the source post/article links in the description.
+          - If corroborating evidence is weak or contradictory, produce a cautious update and say what remains unverified.
 
           Rules:
           - Write like a real Indian TV field reporter speaking naturally to one viewer, not like a formal article or AI announcement.
@@ -165,6 +365,7 @@ jobs:
           PY
 
       - name: Generate Hindi male voice-over
+        if: steps.cjp.outputs.should_run != 'false'
         run: |
           set -e
           mkdir -p models output
@@ -267,6 +468,7 @@ jobs:
     
 
       - name: Generate free Hindi voice comparison samples
+        if: steps.cjp.outputs.should_run != 'false'
         continue-on-error: true
         run: |
           set -e
@@ -324,6 +526,7 @@ jobs:
           PY
 
       - name: Download relevant Wikimedia images
+        if: steps.cjp.outputs.should_run != 'false'
         env:
           SHORT_TOPIC: ${{ inputs.topic }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
@@ -583,6 +786,7 @@ jobs:
           PY
 
       - name: Create free reporter-style intro with FFmpeg
+        if: steps.cjp.outputs.should_run != 'false'
         env:
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         continue-on-error: true
@@ -672,6 +876,7 @@ jobs:
           PY
 
       - name: Create Ground Report video with Hindi captions
+        if: steps.cjp.outputs.should_run != 'false'
         run: |
           set -e
           sudo apt-get update
@@ -861,6 +1066,7 @@ jobs:
             output/mr-ahlawat-short.mp4
 
       - name: Save generated files
+        if: steps.cjp.outputs.should_run != 'false'
         uses: actions/upload-artifact@v6
         with:
           name: mr-ahlawat-ai-short
@@ -868,6 +1074,7 @@ jobs:
           retention-days: 3
 
       - name: Upload video to YouTube
+        if: steps.cjp.outputs.should_run != 'false'
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -937,3 +1144,10 @@ jobs:
           print("Video ID:", response["id"])
           print("Video URL: https://www.youtube.com/watch?v=" + response["id"])
           PY
+
+      - name: Save CJP duplicate state after successful upload
+        if: github.event_name == 'schedule' && steps.cjp.outputs.should_run == 'true' && success()
+        uses: actions/cache/save@v4
+        with:
+          path: .github/cjp-seen.json
+          key: cjp-seen-${{ github.run_id }}
