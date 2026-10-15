@@ -1403,9 +1403,11 @@ jobs:
               response = request.execute()
           except (HttpError, ResumableUploadError) as e:
               if "uploadLimitExceeded" in str(e):
-                  print("YOUTUBE_UPLOAD_LIMIT_REACHED")
-                  print("Generated video is saved in the workflow artifact.")
-                  sys.exit(0)
+                  print("ERROR: YOUTUBE_UPLOAD_LIMIT_REACHED")
+                  print("YouTube refused the upload because the channel/account upload limit was reached.")
+                  print("The generated MP4 was already saved in the workflow artifact.")
+                  print("Wait for YouTube's upload limit to reset, then run the workflow again.")
+                  sys.exit(1)
               raise
 
           print("YOUTUBE_UPLOAD_SUCCESS")
