@@ -364,7 +364,7 @@ jobs:
                   if article_url and article_url not in source_urls:
                       source_urls.append(article_url)
               if source_urls:
-                  data["description"] += "\\n\\nSources: " + " | ".join(source_urls)
+                  data["description"] += "\n\nSources: " + " | ".join(source_urls)
 
           os.makedirs("output", exist_ok=True)
           with open("output/metadata.json", "w", encoding="utf-8") as f:
@@ -1156,7 +1156,7 @@ jobs:
           print("Video ID:", response["id"])
           print("Video URL: https://www.youtube.com/watch?v=" + response["id"])
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_file:
-              output_file.write("uploaded=true\\n")
+              output_file.write("uploaded=true\n")
           PY
 
       - name: Save CJP duplicate state after successful upload
