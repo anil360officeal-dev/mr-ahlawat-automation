@@ -378,7 +378,7 @@ jobs:
           seen = set()
 
           # Prefer Pixabay photos first, using the configured repository secret.
-          # If Pixabay has no matching photos, Wikimedia and Unsplash remain as fallbacks.
+          # If Pixabay has no matching photos, Wikimedia Commons is the topic-focused fallback.
           image_key = os.environ.get("PIXABAY_API_KEY", "").strip()
           if image_key:
               for search_term in queries[:4]:
