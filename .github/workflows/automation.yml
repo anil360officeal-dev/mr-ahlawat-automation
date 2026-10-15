@@ -500,8 +500,8 @@ jobs:
                   communicate = edge_tts.Communicate(
                       script,
                       "hi-IN-MadhurNeural",
-                      rate="+10%",
-                      pitch="+0Hz"
+                      rate="+2%",
+                      pitch="-2Hz"
                   )
                   await communicate.save("output/voiceover-edge.mp3")
 
@@ -545,7 +545,7 @@ jobs:
               [
                   "ffmpeg", "-y",
                   "-i", source_audio,
-                  "-af", "highpass=f=80,lowpass=f=11000,loudnorm=I=-16:TP=-2:LRA=11",
+                  "-af", "highpass=f=75,lowpass=f=11500,equalizer=f=160:t=q:w=1:g=1.2,equalizer=f=2800:t=q:w=1:g=1.8,acompressor=threshold=-20dB:ratio=2.2:attack=15:release=140,loudnorm=I=-16:TP=-1.5:LRA=10",
                   "-b:a", "192k",
                   "output/voiceover.mp3"
               ],
