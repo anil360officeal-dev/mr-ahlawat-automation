@@ -1073,6 +1073,13 @@ jobs:
                       for hit in hits:
                           if video_count >= 2:
                               break
+                          tags = str(hit.get("tags", "")).lower()
+                          if not any(word in tags for word in (
+                              "reporter", "journalist", "interview", "microphone",
+                              "selfie", "vlog", "news"
+                          )):
+                              print("SKIP_UNRELATED_VIDEO:", tags[:160])
+                              continue
                           variants = hit.get("videos", {})
                           clip = variants.get("medium") or variants.get("small") or variants.get("large")
                           if not clip or not clip.get("url"):
@@ -1137,18 +1144,14 @@ jobs:
               print("STREET_REPORTER_INTRO_SKIPPED: Pixabay key unavailable; use topic visuals.")
               raise SystemExit(0)
 
-          # Search only actual videos; avoid the old static microphone portrait.
+          # Only accept clips that look like a person reporting/talking to camera.
+          # Protest crowd footage belongs in B-roll, not in the reporter slot.
           queries = [
-              "man selfie vlog street",
+              "male reporter microphone interview",
               "street interview handheld",
+              "man selfie vlog street",
               "citizen journalist street",
           ]
-          if protest:
-              queries = [
-                  "protest crowd street handheld video",
-                  "street interview handheld",
-                  "man selfie vlog street",
-              ]
 
           session = requests.Session()
           for query in queries:
@@ -1197,7 +1200,7 @@ jobs:
       - name: Generate optional talking reporter with SadTalker (CPU, free)
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         continue-on-error: true
-        timeout-minutes: 25
+        timeout-minutes: 40
         env:
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         run: |
@@ -1209,9 +1212,10 @@ jobs:
           if not key:
               raise SystemExit("PIXABAY_API_KEY missing; SadTalker optional step skipped.")
           queries = [
-              "Indian man street reporter microphone outdoor",
-              "male street interviewer microphone",
-              "Indian man selfie vlog street"
+              "male reporter microphone interview",
+              "Indian male journalist holding microphone",
+              "street interviewer microphone man",
+              "news reporter microphone"
           ]
           session = requests.Session()
           for q in queries:
@@ -1222,6 +1226,12 @@ jobs:
                   }, timeout=25)
                   response.raise_for_status()
                   for hit in response.json().get("hits", []):
+                      tags = str(hit.get("tags", "")).lower()
+                      if not any(word in tags for word in (
+                          "microphone", "reporter", "journalist", "interview", "news", "press"
+                      )):
+                          print("SKIP_NON_REPORTER_PORTRAIT:", tags[:160])
+                          continue
                       url = hit.get("largeImageURL") or hit.get("webformatURL")
                       if not url:
                           continue
@@ -1241,15 +1251,23 @@ jobs:
           raise SystemExit("No suitable portrait photo found; keeping regular video intro.")
           PY
 
-          # SadTalker is an open-source audio-driven talking-face model.
-          # This is best-effort on the free CPU runner; normal render remains the fallback.
+          # SadTalker needs an older Python stack; isolate it so the working
+          # voice/render Python environment remains untouched.
           git clone --depth 1 https://github.com/OpenTalker/SadTalker.git /tmp/SadTalker
-          python -m pip install --upgrade pip
-          python -m pip install -r /tmp/SadTalker/requirements.txt
+          python -m pip install --quiet --upgrade uv
+          uv python install 3.8
+          uv venv --python 3.8 /tmp/sadtalker-venv
+          uv pip install --python /tmp/sadtalker-venv/bin/python \
+            "torch==1.12.1+cpu" "torchvision==0.13.1+cpu" \
+            --extra-index-url https://download.pytorch.org/whl/cpu
+          grep -v -E '^[[:space:]]*gradio[[:space:]]*$' \
+            /tmp/SadTalker/requirements.txt > /tmp/sadtalker-requirements.txt
+          uv pip install --python /tmp/sadtalker-venv/bin/python \
+            -r /tmp/sadtalker-requirements.txt "opencv-python-headless==4.8.1.78"
           bash /tmp/SadTalker/scripts/download_models.sh
 
           mkdir -p output/sadtalker
-          python /tmp/SadTalker/inference.py \
+          /tmp/sadtalker-venv/bin/python /tmp/SadTalker/inference.py \
             --driven_audio output/voiceover.wav \
             --source_image output/sadtalker_source/reporter.jpg \
             --result_dir output/sadtalker \
@@ -1280,6 +1298,15 @@ jobs:
           with open("output/sadtalker_success.txt", "w", encoding="utf-8") as f:
               f.write(source + "\n")
           PY
+
+      - name: Report talking-reporter generation status
+        if: always() && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        run: |
+          if [ -s output/sadtalker_success.txt ]; then
+            echo "SADTALKER_VERIFIED_OUTPUT: $(cat output/sadtalker_success.txt)"
+          else
+            echo "SADTALKER_NOT_GENERATED: no verified talking reporter; quality gate will block upload."
+          fi
 
       - name: Create Ground Report video with Hindi captions
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
@@ -1498,6 +1525,8 @@ jobs:
               fail("Final MP4 is missing or suspiciously small.")
           if not os.path.isfile(audio) or os.path.getsize(audio) < 10000:
               fail("Voice-over WAV is missing or suspiciously small.")
+          if not os.path.isfile("output/sadtalker_success.txt"):
+              fail("No verified AI lip-sync reporter was generated; refusing to upload fallback-only video.")
           if not os.path.isfile(captions):
               fail("Hindi captions file is missing.")
           with open(captions, encoding="utf-8") as f:
