@@ -95,9 +95,11 @@ jobs:
 
           # Search CJP/BJP plus major India-wide public issues; no official X API key.
           search_queries = [
-              '"CJP" OR "BJP" India -filter:replies',
-              'BJP India parliament court election protest -filter:replies',
-              'India unemployment inflation farmers women safety corruption policy -filter:replies'
+              'CJP -filter:replies',
+              '"BJP" (against OR criticism OR protest OR scandal OR controversy OR viral) India -filter:replies',
+              '"BJP government" (failure OR question OR protest OR corruption OR inflation OR unemployment) -filter:replies',
+              'Modi government criticism viral India protest court election -filter:replies',
+              'भारत BJP सरकार विरोध महंगाई बेरोजगारी किसान वायरल -filter:replies'
           ]
           items = []
           known_ids = set()
@@ -150,14 +152,22 @@ jobs:
               if not post_id or post_id in seen or not text or not post_url:
                   continue
               lower_text = text.lower()
-              if not any(term in lower_text for term in (
-                  "cjp", "bjp", "parliament", "supreme court", "election",
-                  "government", "minister", "protest", "unemployment",
-                  "inflation", "farmers", "women", "safety", "corruption",
-                  "constitution", "democracy", "लोकसभा", "संसद", "चुनाव",
-                  "सरकार", "महंगाई", "बेरोजगारी", "किसान", "भ्रष्टाचार",
-                  "संविधान", "न्यायालय", "महिला", "भारत"
-              )):
+              # Run any CJP-related post; for BJP stories, focus on criticism/opposition
+              # and major controversies rather than generic/supportive BJP chatter.
+              is_cjp = "cjp" in lower_text
+              bjp_criticism_terms = (
+                  "against bjp", "bjp government", "modi government", "protest",
+                  "criticism", "scandal", "controversy", "corruption", "failure",
+                  "unemployment", "inflation", "farmers", "women safety", "paper leak",
+                  "electoral bonds", "vote", "election", "court", "constitution",
+                  "विरोध", "आलोचना", "घोटाला", "भ्रष्टाचार", "नाकामी", "महंगाई",
+                  "बेरोजगारी", "किसान", "पेपर लीक", "चुनाव", "सरकार", "मोदी"
+              )
+              is_bjp_criticism = ("bjp" in lower_text or "भारतीय जनता पार्टी" in lower_text
+                                  or "modi" in lower_text or "मोदी" in lower_text) and any(
+                                      term in lower_text for term in bjp_criticism_terms
+                                  )
+              if not (is_cjp or is_bjp_criticism):
                   continue
 
               substantive = [
@@ -223,7 +233,7 @@ jobs:
                   break
 
           if not selected:
-              print("NO_MAJOR_INDIA_ISSUE_CORROBORATED_BY_RECENT_TRUSTED_NEWS; skipping upload.")
+              print("NO_CJP_OR_BJP_CRITICISM_STORY_CORROBORATED_BY_RECENT_TRUSTED_NEWS; skipping upload.")
               output("should_run", "false")
               raise SystemExit(0)
 
@@ -235,7 +245,7 @@ jobs:
           with open("output/cjp_source.json", "w", encoding="utf-8") as f:
               json.dump(selected, f, ensure_ascii=False, indent=2)
 
-          topic = "भारत का बड़ा मुद्दा (CJP/BJP/राष्ट्रीय विषय): " + selected["text"][:500]
+          topic = ("CJP update: " if "cjp" in selected["text"].lower() else "BJP-विरोधी वायरल/बड़ा मुद्दा: ") + selected["text"][:500]
           output("should_run", "true")
           output("topic", topic)
           output("post_id", selected["id"])
