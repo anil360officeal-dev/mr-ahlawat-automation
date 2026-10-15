@@ -700,6 +700,8 @@ jobs:
                       f"setpts=PTS-STARTPTS,scale=1080:1920:"
                       f"force_original_aspect_ratio=increase,"
                       f"crop=1080:1920,setsar=1,fps=30,"
+                      f"eq=contrast=1.04:saturation=1.08:brightness=-0.01,"
+                      f"unsharp=5:5:0.35:3:3:0.12,"
                       f"format=yuv420p,settb=AVTB[{label}]"
                   )
               else:
@@ -710,6 +712,8 @@ jobs:
                       f"zoompan=z='min(zoom+0.0005,1.08)':"
                       f"x='iw/2-(iw/zoom/2)':"
                       f"y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,"
+                      f"eq=contrast=1.04:saturation=1.08:brightness=-0.01,"
+                      f"unsharp=5:5:0.35:3:3:0.12,"
                       f"format=yuv420p,settb=AVTB[{label}]"
                   )
               labels.append(f"[{label}]")
