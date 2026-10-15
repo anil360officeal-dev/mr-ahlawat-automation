@@ -302,7 +302,7 @@ jobs:
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
           python -m pip install --upgrade pip
-          pip install requests piper-tts edge-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib
+          pip install requests piper-tts edge-tts yt-dlp google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
       - name: Generate Hindi Short with Gemini AI
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
@@ -826,6 +826,55 @@ jobs:
                   print(f"Search warning for '{search_term}': {e}")
           
           video_count = 0
+          # Best-effort search of publicly indexed Facebook/Instagram posts.
+          # yt-dlp is used without login cookies; private/login-gated content is skipped.
+          if is_protest_story:
+              import xml.etree.ElementTree as ET
+              import glob
+              social_queries = [topic + " protest site:facebook.com/reel OR site:facebook.com/watch", topic + " protest site:instagram.com/reel OR site:instagram.com/p"]
+              social_urls = []
+              for social_query in social_queries:
+                  try:
+                      rss = session.get("https://www.bing.com/search", params={"format": "rss", "q": social_query}, timeout=25)
+                      rss.raise_for_status()
+                      root = ET.fromstring(rss.text)
+                      for item in root.findall(".//item"):
+                          link = (item.findtext("link") or "").strip()
+                          if not link:
+                              continue
+                          lower = link.lower()
+                          is_fb = "facebook.com/" in lower and any(part in lower for part in ("/reel", "/watch", "/videos/"))
+                          is_ig = "instagram.com/" in lower and any(part in lower for part in ("/reel/", "/p/", "/tv/"))
+                          if (is_fb or is_ig) and link not in social_urls:
+                              social_urls.append(link)
+                  except Exception as search_error:
+                      print("Public social-post search warning:", search_error)
+              print("PUBLIC_FACEBOOK_INSTAGRAM_POSTS_FOUND:", len(social_urls))
+              for post_url in social_urls[:5]:
+                  if video_count >= 2:
+                      break
+                  prefix = "facebook" if "facebook.com" in post_url.lower() else "instagram"
+                  temp_template = f"output/media/social_{prefix}_%(id)s.%(ext)s"
+                  try:
+                      result = subprocess.run(["python", "-m", "yt_dlp", "--no-warnings", "--no-playlist", "--no-progress", "--max-filesize", "80M", "-f", "best[ext=mp4]/best", "-o", temp_template, post_url], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=100)
+                      print("PUBLIC_SOCIAL_DOWNLOAD_RESULT:", result.stdout[-1800:])
+                      candidates = [p for p in glob.glob(f"output/media/social_{prefix}_*") if p.lower().endswith((".mp4", ".webm", ".mkv", ".mov"))]
+                      if result.returncode != 0 or not candidates:
+                          print("Public post was not downloadable without login; skipping.")
+                          continue
+                      source_path = max(candidates, key=os.path.getmtime)
+                      mp4_path = f"output/media/clip_{video_count + 1:02d}.mp4"
+                      converted = subprocess.run(["ffmpeg", "-y", "-i", source_path, "-t", "20", "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2", "-an", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", mp4_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                      if converted.returncode == 0 and os.path.exists(mp4_path) and os.path.getsize(mp4_path) > 10000:
+                          video_count += 1
+                          attribution.append(f"Public social video (review usage rights before publishing) | Source post: {post_url}")
+                          print(f"PUBLIC_SOCIAL_VIDEO_DOWNLOADED: {prefix} clip {video_count}")
+                      elif os.path.exists(mp4_path):
+                          os.remove(mp4_path)
+                  except subprocess.TimeoutExpired:
+                      print("Public social download timed out; skipping URL.")
+                  except Exception as social_error:
+                      print("Public social download skipped:", social_error)
           # Free Wikimedia Commons moving-footage fallback; no API key required.
           # Use it for protest stories, while preserving creator/license attribution.
           if is_protest_story:
