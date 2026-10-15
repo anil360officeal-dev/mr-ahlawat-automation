@@ -9,7 +9,12 @@ on:
         default: "आज की ताज़ा वायरल खबर: CJP की नई जानकारी या BJP के खिलाफ बड़ा राष्ट्रीय मुद्दा"
         type: string
   schedule:
-    - cron: "17,47 * * * *"
+    # India time (IST): 08:00, 14:00, 19:00 = 02:30, 08:30, 13:30 UTC
+    - cron: "30 2,8,13 * * *"
+
+concurrency:
+  group: mr-ahlawat-daily-news-upload
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -22,8 +27,40 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Restore daily upload counter
+        uses: actions/cache/restore@v4
+        with:
+          path: .github/daily-upload-count.json
+          key: daily-upload-count-${{ github.run_id }}
+          restore-keys: |
+            daily-upload-count-
+
+      - name: Check daily upload limit
+        id: daily
+        run: |
+          python - <<'PY'
+          import json, os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          path = ".github/daily-upload-count.json"
+          today = datetime.now(ZoneInfo("Asia/Kolkata")).date().isoformat()
+          try:
+              with open(path, encoding="utf-8") as f:
+                  state = json.load(f)
+          except (OSError, json.JSONDecodeError):
+              state = {}
+          count = int(state.get("count", 0)) if state.get("date") == today else 0
+          allowed = count < 3
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write("allowed=" + ("true" if allowed else "false") + "\\n")
+          print(f"IST_DATE={today}; successful_uploads_today={count}; allowed={allowed}")
+          if not allowed:
+              print("DAILY_UPLOAD_LIMIT_REACHED: maximum 3 successful uploads per India calendar day.")
+          PY
+
       - name: Restore CJP duplicate-post state
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' && steps.daily.outputs.allowed != 'false'
         uses: actions/cache/restore@v4
         with:
           path: .github/cjp-seen.json
@@ -31,9 +68,9 @@ jobs:
           restore-keys: |
             cjp-seen-
 
-      - name: Select and verify CJP post
+      - name: Select and verify CJP or BJP-critical news
         id: cjp
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' && steps.daily.outputs.allowed != 'false'
         run: |
           python - <<'PY'
           import json
@@ -256,19 +293,19 @@ jobs:
           PY
 
       - name: Install FFmpeg
-        if: steps.cjp.outputs.should_run != 'false'
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
       - name: Install Python libraries
-        if: steps.cjp.outputs.should_run != 'false'
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
           python -m pip install --upgrade pip
           pip install requests piper-tts edge-tts google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
       - name: Generate Hindi Short with Gemini AI
-        if: steps.cjp.outputs.should_run != 'false'
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SHORT_TOPIC: ${{ steps.cjp.outputs.topic || inputs.topic }}
@@ -434,7 +471,7 @@ jobs:
           PY
 
       - name: Generate Hindi male voice-over
-        if: steps.cjp.outputs.should_run != 'false'
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
           set -e
           mkdir -p models output
@@ -537,7 +574,7 @@ jobs:
     
 
       - name: Generate free Hindi voice comparison samples
-        if: steps.cjp.outputs.should_run != 'false'
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         continue-on-error: true
         run: |
           set -e
@@ -595,7 +632,7 @@ jobs:
           PY
 
       - name: Download relevant Wikimedia images
-        if: steps.cjp.outputs.should_run != 'false'
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         env:
           SHORT_TOPIC: ${{ inputs.topic }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
@@ -855,7 +892,7 @@ jobs:
           PY
 
       - name: Create free reporter-style intro with FFmpeg
-        if: steps.cjp.outputs.should_run != 'false'
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         env:
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         continue-on-error: true
@@ -945,7 +982,7 @@ jobs:
           PY
 
       - name: Create Ground Report video with Hindi captions
-        if: steps.cjp.outputs.should_run != 'false'
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
           set -e
           sudo apt-get update
@@ -1135,7 +1172,7 @@ jobs:
             output/mr-ahlawat-short.mp4
 
       - name: Save generated files
-        if: steps.cjp.outputs.should_run != 'false'
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         uses: actions/upload-artifact@v6
         with:
           name: mr-ahlawat-ai-short
@@ -1143,7 +1180,7 @@ jobs:
           retention-days: 3
 
       - name: Upload video to YouTube
-        if: steps.cjp.outputs.should_run != 'false'
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         id: upload
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
@@ -1216,6 +1253,35 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_file:
               output_file.write("uploaded=true\n")
           PY
+
+      - name: Update daily upload counter after successful upload
+        if: steps.upload.outputs.uploaded == 'true' && success()
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          path = ".github/daily-upload-count.json"
+          today = datetime.now(ZoneInfo("Asia/Kolkata")).date().isoformat()
+          try:
+              with open(path, encoding="utf-8") as f:
+                  state = json.load(f)
+          except (OSError, json.JSONDecodeError):
+              state = {}
+          count = int(state.get("count", 0)) if state.get("date") == today else 0
+          state = {"date": today, "count": count + 1}
+          with open(path, "w", encoding="utf-8") as f:
+              json.dump(state, f)
+          print(f"DAILY_UPLOAD_COUNT_SAVED: {state['count']}/3 for {today} IST")
+          PY
+
+      - name: Save daily upload counter
+        if: steps.upload.outputs.uploaded == 'true' && success()
+        uses: actions/cache/save@v4
+        with:
+          path: .github/daily-upload-count.json
+          key: daily-upload-count-${{ github.run_id }}
 
       - name: Save CJP duplicate state after successful upload
         if: github.event_name == 'schedule' && steps.cjp.outputs.should_run == 'true' && steps.upload.outputs.uploaded == 'true' && success()
