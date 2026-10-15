@@ -1277,6 +1277,8 @@ jobs:
           if os.path.getsize(target) < 10000:
               raise SystemExit("Talking reporter output invalid; keep fallback intro.")
           print("SADTALKER_TALKING_REPORTER_SUCCESS:", source)
+          with open("output/sadtalker_success.txt", "w", encoding="utf-8") as f:
+              f.write(source + "\n")
           PY
 
       - name: Create Ground Report video with Hindi captions
@@ -1477,7 +1479,7 @@ jobs:
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
           python - <<'PY'
-          import json, os, subprocess, sys
+          import json, os, subprocess, sys, re
 
           out = os.environ["GITHUB_OUTPUT"]
           with open(out, "a", encoding="utf-8") as f:
@@ -1509,6 +1511,9 @@ jobs:
           description = str(data.get("description", "")).strip()
           if not title or len(title) > 100:
               fail(f"YouTube title missing or over 100 characters (length={len(title)}).")
+          hashtag_count = len(re.findall(r"#(?:[A-Za-z0-9_]+|[\u0900-\u097F]+)", title))
+          if hashtag_count < 3:
+              fail(f"YouTube title needs at least 3 hashtags; found {hashtag_count}.")
           if not description:
               fail("YouTube description is empty.")
 
