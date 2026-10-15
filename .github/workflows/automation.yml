@@ -1264,11 +1264,21 @@ jobs:
             /tmp/SadTalker/requirements.txt > /tmp/sadtalker-requirements.txt
           uv pip install --python /tmp/sadtalker-venv/bin/python \
             -r /tmp/sadtalker-requirements.txt "opencv-python-headless==4.8.1.78"
-          bash /tmp/SadTalker/scripts/download_models.sh
+          # Download only the crop/256px checkpoints required for this run.
+          # The upstream helper downloads both 256px and 512px models plus optional
+          # face-enhancement weights, wasting time and disk on a CPU-only runner.
+          mkdir -p /tmp/SadTalker/checkpoints
+          BASE="https://github.com/OpenTalker/SadTalker/releases/download/v0.0.2-rc"
+          curl -fL --retry 3 "$BASE/mapping_00229-model.pth.tar" -o /tmp/SadTalker/checkpoints/mapping_00229-model.pth.tar
+          curl -fL --retry 3 "$BASE/SadTalker_V0.0.2_256.safetensors" -o /tmp/SadTalker/checkpoints/SadTalker_V0.0.2_256.safetensors
+
+          # The final edit only uses the first 7.5 seconds of the talking reporter.
+          # Generate that short audio segment instead of processing the entire narration.
+          ffmpeg -y -i output/voiceover.wav -t 7.5 -ac 1 -ar 16000 output/sadtalker_source/reporter_audio.wav
 
           mkdir -p output/sadtalker
           /tmp/sadtalker-venv/bin/python /tmp/SadTalker/inference.py \
-            --driven_audio output/voiceover.wav \
+            --driven_audio output/sadtalker_source/reporter_audio.wav \
             --source_image output/sadtalker_source/reporter.jpg \
             --result_dir output/sadtalker \
             --preprocess crop \
