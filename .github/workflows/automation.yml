@@ -351,14 +351,14 @@ jobs:
           - Write like a real Indian TV field reporter speaking naturally to one viewer, not like a formal article or AI announcement.
           - Use natural spoken Devanagari Hindi with everyday Indian phrasing and smooth word connections.
           - Avoid writing Hindi words in Roman letters. Keep only unavoidable names and technical terms in English; write common terms in Hindi phonetics when that improves pronunciation.
-          - Sound warm, grounded, confident, and human. Keep the news-anchor energy, but do not make every sentence sound like a dramatic headline.
-          - Vary sentence length and rhythm naturally; use commas and full stops where a real speaker would breathe.
+          - Sound like an alert, confident Indian TV news presenter with natural human conversational flow, varied emphasis, and decisive sentence endings. Avoid a sleepy, flat, breathless, or robotic delivery. Keep it credible, not theatrical.
+          - Vary sentence length and rhythm naturally; use commas and full stops for short, purposeful pauses. Prefer active voice and punchy spoken sentences.
           - Use emphasis only on the most important facts. Keep transitions conversational and the ending crisp, not theatrical.
           - Prefer easy-to-pronounce words and clean sentence structure; avoid tongue-twisters, stacked English terms, repeated filler, and generic AI phrases.
           - Never shout, over-dramatize, sensationalize, invent facts, or claim unverified breaking news.
-          - Script should be around 45–52 seconds when spoken (roughly 105–120 Hindi words).
+          - Script should be around 40–48 seconds when spoken (roughly 95–110 Hindi words), with a brisk pace and no padding.
           - Include a strong opening hook, clear explanation, and a short closing line.
-          - Do not make the script too short; aim for a full one-minute narration.
+          - Keep the narration tight; never stretch it just to fill time.
           - Do not invent facts, quotes, or breaking news.
           - Title must be under 100 characters and include 3 relevant hashtags.
           - Description should explain the topic and include relevant hashtags.
@@ -499,8 +499,8 @@ jobs:
                   communicate = edge_tts.Communicate(
                       script,
                       "hi-IN-MadhurNeural",
-                      rate="+12%",
-                      pitch="+2Hz"
+                      rate="+20%",
+                      pitch="+1Hz"
                   )
                   await communicate.save("output/voiceover-edge.mp3")
 
@@ -527,10 +527,10 @@ jobs:
                   [
                       "piper",
                       "--model", "models/hi_IN-rohan-medium.onnx",
-                      "--length_scale", "0.90",
+                      "--length_scale", "0.84",
                       "--noise_scale", "0.60",
                       "--noise_w_scale", "0.75",
-                      "--sentence_silence", "0.18",
+                      "--sentence_silence", "0.12",
                       "--output_file", "output/voiceover.wav"
                   ],
                   input=script,
@@ -544,7 +544,7 @@ jobs:
               [
                   "ffmpeg", "-y",
                   "-i", source_audio,
-                  "-af", "highpass=f=75,lowpass=f=11000,equalizer=f=180:t=q:w=1:g=0.8,equalizer=f=2800:t=q:w=1:g=0.8,equalizer=f=4200:t=q:w=1:g=0.3,acompressor=threshold=-22dB:ratio=2.2:attack=15:release=140,loudnorm=I=-16:TP=-1.5:LRA=11",
+                  "-af", "highpass=f=80,lowpass=f=12000,equalizer=f=180:t=q:w=1:g=1.5,equalizer=f=250:t=q:w=1:g=0.8,equalizer=f=3000:t=q:w=1:g=1.5,equalizer=f=4500:t=q:w=1:g=0.8,acompressor=threshold=-20dB:ratio=3:attack=8:release=100:makeup=3,loudnorm=I=-14:TP=-1.5:LRA=9",
                   "-b:a", "192k",
                   "output/voiceover.mp3"
               ],
