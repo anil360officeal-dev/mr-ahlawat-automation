@@ -192,7 +192,7 @@ jobs:
                   communicate = edge_tts.Communicate(
                       script,
                       "hi-IN-MadhurNeural",
-                      rate="+5%",
+                      rate="+12%",
                       pitch="+0Hz"
                   )
                   await communicate.save("output/voiceover-edge.mp3")
