@@ -364,7 +364,7 @@ jobs:
           - Description should explain the topic and include relevant hashtags.
           - Return valid JSON only with these keys:
           - script, title, description, hashtags, visual_search_terms
-          - visual_search_terms must be a JSON array containing 3 short English search queries tied to THIS exact topic. Include the real person, place, event, company, product, or technology named in the topic whenever applicable. Do not return generic terms such as 'India news', 'technology background', or 'people talking'. Prefer queries that would find visuals of the exact event/person, then closely related context.
+          - visual_search_terms must be a JSON array containing 3 short English search queries tied to THIS exact topic. Include the real person, place, event, company, product, or technology named in the topic whenever applicable. For protest, rally, dharna, demonstration, or police-action stories, prioritize visuals of that specific event, its named people/place, protest crowds, banners, and police barricades; use generic India protest visuals only as a fallback. Never imply illustrative footage is from the exact event unless verified. Avoid unrelated stock photos.
           """
 
           url = (
@@ -673,9 +673,19 @@ jobs:
                   queries.append(q)
           if not queries:
               raise RuntimeError("No topic-specific visual search queries were generated.")
+
+          # Search protest-related photos and videos when the story is about a protest.
+          topic_text = " ".join([topic, title] + generated_queries).lower()
+          protest_terms = ("protest", "protests", "demonstration", "rally", "dharna", "andolan", "jantarmantar", "जंतर मंतर", "प्रदर्शन", "धरना", "आंदोलन", "मोर्चा")
+          is_protest_story = any(term in topic_text for term in protest_terms)
+          if is_protest_story:
+              for q in [topic + " protest rally", topic + " demonstration crowd banners", "India public protest rally crowd police barricades"]:
+                  if q.strip() and q.lower() not in {item.lower() for item in queries}:
+                      queries.append(q)
           print("TOPIC_FOCUSED_VISUAL_QUERIES:")
           for q in queries:
               print(" - " + q)
+          print("PROTEST_VISUAL_MODE:", is_protest_story)
 
           session = requests.Session()
           session.headers.update({
@@ -815,10 +825,61 @@ jobs:
               except Exception as e:
                   print(f"Search warning for '{search_term}': {e}")
           
+          # Free Wikimedia Commons moving-footage fallback; no API key required.
+          # Use it for protest stories, while preserving creator/license attribution.
+          if is_protest_story:
+              for search_term in queries[:5] + ["India protest demonstration rally crowd", "Jantar Mantar protest India"]:
+                  if video_count >= 2:
+                      break
+                  try:
+                      response = session.get("https://commons.wikimedia.org/w/api.php", params={"action": "query", "format": "json", "list": "search", "srnamespace": 6, "srsearch": search_term, "srlimit": 8}, timeout=30)
+                      response.raise_for_status()
+                      results = response.json().get("query", {}).get("search", [])
+                      for result in results:
+                          if video_count >= 2:
+                              break
+                          file_title = result.get("title", "")
+                          if not file_title:
+                              continue
+                          detail = session.get("https://commons.wikimedia.org/w/api.php", params={"action": "query", "format": "json", "titles": file_title, "prop": "imageinfo", "iiprop": "url|mime|extmetadata"}, timeout=30)
+                          detail.raise_for_status()
+                          pages = detail.json().get("query", {}).get("pages", {})
+                          for page in pages.values():
+                              info = page.get("imageinfo", [{}])[0]
+                              if not info.get("mime", "").startswith("video/") or not info.get("url"):
+                                  continue
+                              raw_path = "output/media/commons_video_source"
+                              try:
+                                  raw = session.get(info["url"], timeout=90)
+                                  raw.raise_for_status()
+                                  if len(raw.content) < 20000:
+                                      continue
+                                  with open(raw_path, "wb") as out:
+                                      out.write(raw.content)
+                                  mp4_path = f"output/media/clip_{video_count + 1:02d}.mp4"
+                                  converted = subprocess.run(["ffmpeg", "-y", "-i", raw_path, "-t", "20", "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2", "-an", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", mp4_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                                  os.remove(raw_path)
+                                  if converted.returncode != 0 or not os.path.exists(mp4_path) or os.path.getsize(mp4_path) < 10000:
+                                      if os.path.exists(mp4_path): os.remove(mp4_path)
+                                      continue
+                                  video_count += 1
+                                  meta = info.get("extmetadata", {})
+                                  artist = meta.get("Artist", {}).get("value", "Unknown")
+                                  license_name = meta.get("LicenseShortName", {}).get("value", "Check license")
+                                  source_page = "https://commons.wikimedia.org/wiki/" + quote(file_title.replace(" ", "_"))
+                                  attribution.append(f"Commons video | {file_title} | Creator: {artist} | License: {license_name} | Source: {source_page}")
+                                  print(f"COMMONS_PROTEST_VIDEO_DOWNLOADED: {video_count}: {file_title}")
+                                  break
+                              except Exception as video_error:
+                                  print("Commons video candidate failed:", video_error)
+                  except Exception as commons_error:
+                      print(f"Commons video search warning for '{search_term}': {commons_error}")
+
           with open("output/media_attribution.txt", "w", encoding="utf-8") as f:
               f.write("\n".join(attribution))
 
           print(f"WIKIMEDIA_IMAGES_DOWNLOADED: {saved}")
+          print(f"PROTEST_OR_TOPIC_VIDEO_CLIPS_DOWNLOADED: {video_count}")
 
           if saved == 0:
               print("No topic-matched photos found; will use clearly designed newsroom graphics rather than unrelated stock photos.")
