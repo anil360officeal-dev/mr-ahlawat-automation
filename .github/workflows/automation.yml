@@ -581,10 +581,39 @@ jobs:
           set -e
           mkdir -p models output
 
-          # Keep the production voiceover.mp3 untouched. Create a separate Pratham sample
-          # so both free Hindi male voices can be compared from the workflow artifact.
-          cp output/voiceover.mp3 output/voice-test-rohan.mp3
+          # Preserve production voice. This file is the actual current Madhur sample.
+          cp output/voiceover.mp3 output/voice-test-madhur.mp3
 
+          # Generate two alternative free Hindi male neural voices separately.
+          python - <<'PY'
+          import asyncio
+          import os
+          import json
+          import subprocess
+          import edge_tts
+
+          with open("output/metadata.json", encoding="utf-8") as f:
+              script = json.load(f)["script"].strip()
+          if not script:
+              raise RuntimeError("Voice comparison script is empty")
+
+          async def make_sample(voice, filename):
+              try:
+                  communicate = edge_tts.Communicate(script, voice, rate="+0%", pitch="-2Hz")
+                  await communicate.save(filename)
+                  if os.path.getsize(filename) < 1000:
+                      raise RuntimeError("sample too small")
+                  print(f"VOICE_SAMPLE_READY={voice}:{filename}")
+              except Exception as e:
+                  print(f"VOICE_SAMPLE_UNAVAILABLE={voice}:{e!r}")
+
+          async def main():
+              await make_sample("hi-IN-KunalNeural", "output/voice-test-kunal.mp3")
+              await make_sample("hi-IN-RehaanNeural", "output/voice-test-rehaan.mp3")
+          asyncio.run(main())
+          PY
+
+          # Keep the free offline Piper Pratham sample as a fallback comparison.
           BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/pratham/medium"
           curl -fL --retry 3 "$BASE/hi_IN-pratham-medium.onnx" -o models/hi_IN-pratham-medium.onnx
           curl -fL --retry 3 "$BASE/hi_IN-pratham-medium.onnx.json" -o models/hi_IN-pratham-medium.onnx.json
@@ -596,9 +625,6 @@ jobs:
 
           with open("output/metadata.json", encoding="utf-8") as f:
               script = json.load(f)["script"].strip()
-
-          if not script:
-              raise RuntimeError("Voice comparison script is empty")
 
           subprocess.run(
               [
@@ -614,7 +640,6 @@ jobs:
               text=True,
               check=True
           )
-
           subprocess.run(
               [
                   "ffmpeg", "-y", "-i", "output/voice-test-pratham.wav",
@@ -624,12 +649,16 @@ jobs:
               check=True
           )
 
-          for name in ("output/voice-test-rohan.mp3", "output/voice-test-pratham.mp3"):
+          required = ["output/voice-test-madhur.mp3", "output/voice-test-pratham.mp3"]
+          for name in required:
               if not os.path.exists(name) or os.path.getsize(name) < 1000:
                   raise RuntimeError(f"Voice comparison sample missing or too small: {name}")
 
+          for name in ("output/voice-test-kunal.mp3", "output/voice-test-rehaan.mp3"):
+              if os.path.exists(name) and os.path.getsize(name) >= 1000:
+                  print(f"VOICE_SAMPLE_AVAILABLE={name}")
           print("VOICE_COMPARISON_SAMPLES_READY")
-          print("Compare output/voice-test-rohan.mp3 with output/voice-test-pratham.mp3 in the workflow artifact.")
+          print("Compare Madhur, Kunal, Rehaan, and Piper Pratham files in the artifact. Production voice is unchanged.")
           PY
 
       - name: Download relevant Wikimedia images
