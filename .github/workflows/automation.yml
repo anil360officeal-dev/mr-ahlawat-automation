@@ -245,6 +245,21 @@ jobs:
           if os.path.getsize("output/voiceover.mp3") < 1000:
               raise RuntimeError("Voice-over file is too small")
 
+          # Downstream caption timing reads voiceover.wav, so always create it
+          # from the final processed MP3 regardless of which voice engine won.
+          subprocess.run(
+              [
+                  "ffmpeg", "-y",
+                  "-i", "output/voiceover.mp3",
+                  "-ar", "24000",
+                  "-ac", "1",
+                  "output/voiceover.wav"
+              ],
+              check=True
+          )
+          if not os.path.exists("output/voiceover.wav") or os.path.getsize("output/voiceover.wav") < 1000:
+              raise RuntimeError("Compatibility WAV for caption timing was not created")
+
           print("HINDI_MALE_VOICE_SUCCESS")
           PY
     
