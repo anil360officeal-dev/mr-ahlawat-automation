@@ -490,62 +490,68 @@ jobs:
           if not script:
               raise RuntimeError("AI script is empty")
 
-          # First try Microsoft's free Hindi neural voice. If its service is
-          # unavailable (for example HTTP 403), fall back to the known Piper voice.
+          # Piper Pratham is the DEFAULT production voice, using the tuned sample settings.
+          # If the offline voice/model cannot be generated, fall back to Microsoft Hindi neural.
           source_audio = None
+          BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/pratham/medium"
           try:
-              import edge_tts
-
-              async def make_neural_voice():
-                  communicate = edge_tts.Communicate(
-                      script,
-                      "hi-IN-MadhurNeural",
-                      rate="+2%",
-                      pitch="-2Hz"
-                  )
-                  await communicate.save("output/voiceover-edge.mp3")
-
-              asyncio.run(make_neural_voice())
-              if os.path.getsize("output/voiceover-edge.mp3") > 1000:
-                  source_audio = "output/voiceover-edge.mp3"
-                  print("VOICE_ENGINE=edge-tts hi-IN-MadhurNeural")
-          except Exception as e:
-              print("Neural Hindi voice unavailable; using Piper fallback:", repr(e))
-
-          if source_audio is None:
-              BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/rohan/medium"
               subprocess.run(
-                  ["curl", "-fL", BASE + "/hi_IN-rohan-medium.onnx",
-                   "-o", "models/hi_IN-rohan-medium.onnx"],
+                  ["curl", "-fL", "--retry", "3", BASE + "/hi_IN-pratham-medium.onnx",
+                   "-o", "models/hi_IN-pratham-medium.onnx"],
                   check=True
               )
               subprocess.run(
-                  ["curl", "-fL", BASE + "/hi_IN-rohan-medium.onnx.json",
-                   "-o", "models/hi_IN-rohan-medium.onnx.json"],
+                  ["curl", "-fL", "--retry", "3", BASE + "/hi_IN-pratham-medium.onnx.json",
+                   "-o", "models/hi_IN-pratham-medium.onnx.json"],
                   check=True
               )
               subprocess.run(
                   [
                       "piper",
-                      "--model", "models/hi_IN-rohan-medium.onnx",
-                      "--length_scale", "0.84",
-                      "--noise_scale", "0.60",
-                      "--noise_w_scale", "0.75",
-                      "--sentence_silence", "0.12",
-                      "--output_file", "output/voiceover.wav"
+                      "--model", "models/hi_IN-pratham-medium.onnx",
+                      "--length_scale", "0.90",
+                      "--noise_scale", "0.45",
+                      "--noise_w_scale", "0.65",
+                      "--sentence_silence", "0.18",
+                      "--output_file", "output/voiceover-pratham.wav"
                   ],
                   input=script,
                   text=True,
                   check=True
               )
-              source_audio = "output/voiceover.wav"
-              print("VOICE_ENGINE=piper hi_IN-rohan-medium")
+              if os.path.getsize("output/voiceover-pratham.wav") < 1000:
+                  raise RuntimeError("Piper Pratham output is too small")
+              source_audio = "output/voiceover-pratham.wav"
+              print("VOICE_ENGINE=default-piper-hi_IN-pratham-medium")
+          except Exception as e:
+              print("Piper Pratham unavailable; trying Hindi neural fallback:", repr(e))
+              try:
+                  import edge_tts
+
+                  async def make_neural_voice():
+                      communicate = edge_tts.Communicate(
+                          script,
+                          "hi-IN-MadhurNeural",
+                          rate="+2%",
+                          pitch="-2Hz"
+                      )
+                      await communicate.save("output/voiceover-edge.mp3")
+
+                  asyncio.run(make_neural_voice())
+                  if os.path.getsize("output/voiceover-edge.mp3") > 1000:
+                      source_audio = "output/voiceover-edge.mp3"
+                      print("VOICE_ENGINE=fallback-edge-tts-hi-IN-MadhurNeural")
+              except Exception as fallback_error:
+                  print("Hindi neural fallback unavailable:", repr(fallback_error))
+
+          if source_audio is None:
+              raise RuntimeError("Both default Piper Pratham and Hindi neural fallback failed")
 
           subprocess.run(
               [
                   "ffmpeg", "-y",
                   "-i", source_audio,
-                  "-af", "highpass=f=75,lowpass=f=11500,equalizer=f=160:t=q:w=1:g=1.2,equalizer=f=2800:t=q:w=1:g=1.8,acompressor=threshold=-20dB:ratio=2.2:attack=15:release=140,loudnorm=I=-16:TP=-1.5:LRA=10",
+                  "-af", "highpass=f=80,lowpass=f=11500,equalizer=f=180:t=q:w=1:g=1.0,equalizer=f=2500:t=q:w=1:g=1.6,acompressor=threshold=-20dB:ratio=2.2:attack=15:release=140,loudnorm=I=-16:TP=-1.5:LRA=10",
                   "-b:a", "192k",
                   "output/voiceover.mp3"
               ],
@@ -555,8 +561,7 @@ jobs:
           if os.path.getsize("output/voiceover.mp3") < 1000:
               raise RuntimeError("Voice-over file is too small")
 
-          # Downstream caption timing reads voiceover.wav, so always create it
-          # from the final processed MP3 regardless of which voice engine won.
+          # Caption timing depends on this normalized compatibility WAV.
           subprocess.run(
               [
                   "ffmpeg", "-y",
@@ -582,7 +587,7 @@ jobs:
           mkdir -p models output
 
           # Preserve production voice. This file is the actual current Madhur sample.
-          cp output/voiceover.mp3 output/voice-test-madhur.mp3
+          cp output/voiceover.mp3 output/voice-test-production.mp3
 
           # Generate two alternative free Hindi male neural voices separately.
           python - <<'PY'
@@ -649,7 +654,7 @@ jobs:
               check=True
           )
 
-          required = ["output/voice-test-madhur.mp3", "output/voice-test-pratham.mp3"]
+          required = ["output/voice-test-production.mp3", "output/voice-test-pratham.mp3"]
           for name in required:
               if not os.path.exists(name) or os.path.getsize(name) < 1000:
                   raise RuntimeError(f"Voice comparison sample missing or too small: {name}")
@@ -658,7 +663,7 @@ jobs:
               if os.path.exists(name) and os.path.getsize(name) >= 1000:
                   print(f"VOICE_SAMPLE_AVAILABLE={name}")
           print("VOICE_COMPARISON_SAMPLES_READY")
-          print("Compare Madhur, Kunal, Rehaan, and Piper Pratham files in the artifact. Production voice is unchanged.")
+          print("Production voice is now Piper Pratham by default. Compare voice-test-production.mp3 with optional Kunal/Rehaan samples.")
           PY
 
       - name: Download relevant Wikimedia images
