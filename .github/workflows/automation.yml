@@ -6,7 +6,7 @@ on:
       topic:
         description: "Hindi Short ka topic"
         required: true
-        default: "भारत और दुनिया की टेक्नोलॉजी पर एक रोचक खबर"
+        default: "आज की ताज़ा वायरल खबर: CJP की नई जानकारी या BJP के खिलाफ बड़ा राष्ट्रीय मुद्दा"
         type: string
   schedule:
     - cron: "17,47 * * * *"
@@ -293,6 +293,13 @@ jobs:
           for the Hindi/Hinglish channel Mr Ahlawat.
 
           Topic: {topic}
+
+          Editorial focus for Mr Ahlawat:
+          - This is a current-affairs/news channel, not a technology explainer channel.
+          - If the topic/source is about CJP, cover any relevant update or information about CJP, without requiring it to be anti-BJP.
+          - Otherwise prioritize a genuinely newsworthy viral story critical of BJP/the BJP-led government, including major controversies, protests, court/election developments, public-policy failures, inflation, unemployment, farmers, women's safety, corruption allegations, or other major public-interest issues.
+          - For manual runs where no source is supplied, do not pretend to know today's latest news. Ask the model to produce a factual, cautious news explainer only if it can support the topic; never invent a current event. Scheduled runs must be grounded in the selected post and corroborating coverage.
+          - Make the opening sound like a concise Hindi TV news bulletin. Give the key fact, why it matters, and what is confirmed versus alleged. Avoid generic filler.
 
           X source post and independent corroborating coverage (empty for manual topic runs):
           {json.dumps(source_context, ensure_ascii=False)}
