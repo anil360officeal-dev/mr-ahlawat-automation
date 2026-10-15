@@ -337,7 +337,7 @@ jobs:
           - If the topic/source is about CJP, cover any relevant update or information about CJP, without requiring it to be anti-BJP.
           - Otherwise prioritize a genuinely newsworthy viral story critical of BJP/the BJP-led government, including major controversies, protests, court/election developments, public-policy failures, inflation, unemployment, farmers, women's safety, corruption allegations, or other major public-interest issues.
           - For manual runs where no source is supplied, do not pretend to know today's latest news. Ask the model to produce a factual, cautious news explainer only if it can support the topic; never invent a current event. Scheduled runs must be grounded in the selected post and corroborating coverage.
-          - Make the opening sound like a concise Hindi TV news bulletin. Give the key fact, why it matters, and what is confirmed versus alleged. Avoid generic filler.
+          - Make the opening sound like a concise Hindi ground reporter speaking directly to a phone camera on the street. Give the key fact, why it matters, and what is confirmed versus alleged. Avoid generic filler.
 
           X source post and independent corroborating coverage (empty for manual topic runs):
           {json.dumps(source_context, ensure_ascii=False)}
@@ -349,10 +349,10 @@ jobs:
           - If corroborating evidence is weak or contradictory, produce a cautious update and say what remains unverified.
 
           Rules:
-          - Write like a real Indian TV field reporter speaking naturally to one viewer, not like a formal article or AI announcement.
+          - Write like a real Indian TV field reporter speaking naturally to one viewer, not like a formal TV studio anchor, formal article, or AI announcement.
           - Use natural spoken Devanagari Hindi with everyday Indian phrasing and smooth word connections.
           - Avoid writing Hindi words in Roman letters. Keep only unavoidable names and technical terms in English; write common terms in Hindi phonetics when that improves pronunciation.
-          - Sound like an alert, confident Indian TV news presenter with natural human conversational flow, varied emphasis, and decisive sentence endings. Avoid a sleepy, flat, breathless, or robotic delivery. Keep it credible, not theatrical.
+          - Sound like an confident Indian street reporter or protest ground reporter speaking naturally to a phone camera with natural human conversational flow, varied emphasis, and decisive sentence endings. Avoid a sleepy, flat, breathless, or robotic delivery. Keep it credible, not theatrical.
           - Vary sentence length and rhythm naturally; use commas and full stops for short, purposeful pauses. Prefer active voice and punchy spoken sentences.
           - Use emphasis only on the most important facts. Keep transitions conversational and the ending crisp, not theatrical.
           - Prefer easy-to-pronounce words and clean sentence structure; avoid tongue-twisters, stacked English terms, repeated filler, and generic AI phrases.
@@ -1083,10 +1083,11 @@ jobs:
           print(f"VISUAL_FILES_READY: {len(visuals)}")
           PY
 
-      - name: Create free reporter-style intro with FFmpeg
+      - name: Find free street-reporter video intro (no studio stock photo)
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         env:
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          SHORT_TOPIC: ${{ steps.cjp.outputs.topic || inputs.topic }}
         continue-on-error: true
         run: |
           python - <<'PY'
@@ -1097,80 +1098,71 @@ jobs:
           media_dir = "output/media"
           os.makedirs(media_dir, exist_ok=True)
           api_key = os.environ.get("PIXABAY_API_KEY", "").strip()
-          portrait_path = os.path.join(media_dir, "reporter_portrait.jpg")
           output_path = os.path.join(media_dir, "reporter_intro.mp4")
+          topic = os.environ.get("SHORT_TOPIC", "").strip().lower()
+          protest = any(word in topic for word in (
+              "cjp", "protest", "धरना", "प्रदर्शन", "आंदोलन", "bjp", "जंतर मंतर"
+          ))
 
-          # Free photo-based intro; no D-ID or paid avatar API is used.
-          try:
-              if not api_key:
-                  print("Free reporter intro skipped: PIXABAY_API_KEY is not configured.")
-                  raise SystemExit(0)
+          if not api_key:
+              print("STREET_REPORTER_INTRO_SKIPPED: Pixabay key unavailable; use topic visuals.")
+              raise SystemExit(0)
 
-              response = requests.get(
-                  "https://pixabay.com/api/",
-                  params={
-                      "key": api_key,
-                      "q": "male news reporter microphone",
-                      "image_type": "photo",
-                      "orientation": "vertical",
-                      "safesearch": "true",
-                      "per_page": 10
-                  },
-                  timeout=30
-              )
-              response.raise_for_status()
-              hits = response.json().get("hits", [])
-              if not hits:
-                  print("Free reporter intro skipped: Pixabay returned no reporter photos.")
-                  raise SystemExit(0)
+          # Search only actual videos; avoid the old static microphone portrait.
+          queries = [
+              "man selfie vlog street",
+              "street interview handheld",
+              "citizen journalist street",
+          ]
+          if protest:
+              queries = [
+                  "protest crowd street handheld video",
+                  "street interview handheld",
+                  "man selfie vlog street",
+              ]
 
-              downloaded = False
-              for hit in hits:
-                  image_url = hit.get("largeImageURL") or hit.get("webformatURL")
-                  if not image_url:
-                      continue
-                  try:
-                      image = requests.get(image_url, timeout=45)
-                      image.raise_for_status()
-                      if len(image.content) < 5000:
+          session = requests.Session()
+          for query in queries:
+              try:
+                  response = session.get(
+                      "https://pixabay.com/api/videos/",
+                      params={
+                          "key": api_key, "q": query, "video_type": "film",
+                          "safesearch": "true", "per_page": 10
+                      },
+                      timeout=30
+                  )
+                  response.raise_for_status()
+                  hits = response.json().get("hits", [])
+                  for hit in hits:
+                      variants = hit.get("videos", {})
+                      candidate = variants.get("medium") or variants.get("small") or variants.get("large")
+                      if not candidate or not candidate.get("url"):
                           continue
-                      with open(portrait_path, "wb") as out:
-                          out.write(image.content)
-                      downloaded = True
-                      print("FREE_REPORTER_PHOTO_DOWNLOADED")
-                      break
-                  except Exception as image_error:
-                      print("Reporter photo candidate failed:", image_error)
+                      clip = session.get(candidate["url"], timeout=60)
+                      clip.raise_for_status()
+                      if len(clip.content) < 20000:
+                          continue
+                      temp = os.path.join(media_dir, "street_reporter_source.mp4")
+                      with open(temp, "wb") as out:
+                          out.write(clip.content)
+                      result = subprocess.run([
+                          "ffmpeg", "-y", "-i", temp, "-t", "7.5",
+                          "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p",
+                          "-an", "-c:v", "libx264", "-preset", "veryfast",
+                          "-pix_fmt", "yuv420p", output_path
+                      ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                      os.remove(temp)
+                      if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
+                          print("REAL_VIDEO_INTRO_CREATED_FROM_PIXABAY:", query, "ID:", hit.get("id", "unknown"))
+                          print("NOTE: stock intro is illustrative footage, not proof of the specific protest.")
+                          raise SystemExit(0)
+              except SystemExit:
+                  raise
+              except Exception as error:
+                  print("Street-reporter video search warning:", query, repr(error))
 
-              if not downloaded:
-                  print("Free reporter intro skipped: could not download a suitable photo.")
-                  raise SystemExit(0)
-
-              # The main renderer mixes in the existing Hindi Piper narration.
-              subprocess.run([
-                  "ffmpeg", "-y",
-                  "-loop", "1", "-framerate", "30", "-t", "7.5",
-                  "-i", portrait_path,
-                  "-vf",
-                  "scale=1080:1920:force_original_aspect_ratio=increase,"
-                  "crop=1080:1920,"
-                  "zoompan=z='min(zoom+0.0007,1.10)':"
-                  "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-                  "d=1:s=1080x1920:fps=30,"
-                  "format=yuv420p",
-                  "-an", "-c:v", "libx264", "-preset", "veryfast",
-                  "-pix_fmt", "yuv420p", "-r", "30",
-                  output_path
-              ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-
-              if not os.path.exists(output_path) or os.path.getsize(output_path) < 10000:
-                  raise RuntimeError("FFmpeg did not create a valid reporter intro clip")
-              print("FREE_REPORTER_INTRO_SUCCESS")
-          except SystemExit:
-              raise
-          except Exception as error:
-              print("Free reporter intro unavailable; main video will use its regular visuals.")
-              print(type(error).__name__ + ": " + str(error))
+          print("STREET_REPORTER_INTRO_NOT_FOUND: keeping relevant topic videos/photos; no fake talking portrait.")
           PY
 
       - name: Create Ground Report video with Hindi captions
