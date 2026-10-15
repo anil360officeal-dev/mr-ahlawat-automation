@@ -247,6 +247,50 @@ jobs:
           attribution = []
           seen = set()
 
+          # Prefer Pixabay photos first, using the configured repository secret.
+          # If Pixabay has no matching photos, Wikimedia and Unsplash remain as fallbacks.
+          image_key = os.environ.get("PIXABAY_API_KEY", "").strip()
+          if image_key:
+              for search_term in queries[:4]:
+                  if saved >= 5:
+                      break
+                  try:
+                      print(f"Searching Pixabay photos: {search_term}")
+                      api = session.get(
+                          "https://pixabay.com/api/",
+                          params={
+                              "key": image_key,
+                              "q": search_term,
+                              "image_type": "photo",
+                              "orientation": "vertical",
+                              "safesearch": "true",
+                              "per_page": 5
+                          },
+                          timeout=30
+                      )
+                      api.raise_for_status()
+                      for hit in api.json().get("hits", []):
+                          if saved >= 5:
+                              break
+                          image_url = hit.get("largeImageURL") or hit.get("webformatURL")
+                          if not image_url or image_url in seen:
+                              continue
+                          seen.add(image_url)
+                          image = session.get(image_url, timeout=45)
+                          image.raise_for_status()
+                          if len(image.content) < 5000:
+                              continue
+                          saved += 1
+                          with open(f"output/media/image_{saved:02d}.jpg", "wb") as out:
+                              out.write(image.content)
+                          attribution.append(
+                              f"Pixabay photo | ID: {hit.get('id', 'unknown')} | "
+                              f"Source: https://pixabay.com/"
+                          )
+                          print(f"PIXABAY_IMAGE_DOWNLOADED: {saved}")
+                  except Exception as pixabay_error:
+                      print(f"Pixabay photo search warning for '{search_term}': {pixabay_error}")
+
           for search_term in queries[:4]:
               if saved >= 5:
                   break
