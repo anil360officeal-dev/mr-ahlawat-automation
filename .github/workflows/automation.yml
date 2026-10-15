@@ -1277,14 +1277,18 @@ jobs:
           ffmpeg -y -i output/voiceover.wav -t 7.5 -ac 1 -ar 16000 output/sadtalker_source/reporter_audio.wav
 
           mkdir -p output/sadtalker
-          /tmp/sadtalker-venv/bin/python /tmp/SadTalker/inference.py \
-            --driven_audio output/sadtalker_source/reporter_audio.wav \
-            --source_image output/sadtalker_source/reporter.jpg \
-            --result_dir output/sadtalker \
+          # SadTalker resolves ./checkpoints relative to the current directory.
+          # Run inference from its own repo so it detects the downloaded safetensors.
+          cd /tmp/SadTalker
+          /tmp/sadtalker-venv/bin/python inference.py \
+            --driven_audio "$GITHUB_WORKSPACE/output/sadtalker_source/reporter_audio.wav" \
+            --source_image "$GITHUB_WORKSPACE/output/sadtalker_source/reporter.jpg" \
+            --result_dir "$GITHUB_WORKSPACE/output/sadtalker" \
             --preprocess crop \
             --size 256 \
             --still \
             --cpu
+          cd "$GITHUB_WORKSPACE"
 
           python - <<'PY'
           import glob, os, subprocess
