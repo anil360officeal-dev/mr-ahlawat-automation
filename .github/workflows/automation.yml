@@ -354,6 +354,17 @@ jobs:
 
           data["title"] = data["title"].strip()[:100]
           data["description"] = data["description"].strip()
+          if source_context:
+              source_urls = []
+              post_url = source_context.get("url", "")
+              if post_url:
+                  source_urls.append(post_url)
+              for article in source_context.get("corroborating_articles", []):
+                  article_url = article.get("url", "")
+                  if article_url and article_url not in source_urls:
+                      source_urls.append(article_url)
+              if source_urls:
+                  data["description"] += "\\n\\nSources: " + " | ".join(source_urls)
 
           os.makedirs("output", exist_ok=True)
           with open("output/metadata.json", "w", encoding="utf-8") as f:
@@ -1075,6 +1086,7 @@ jobs:
 
       - name: Upload video to YouTube
         if: steps.cjp.outputs.should_run != 'false'
+        id: upload
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
@@ -1143,10 +1155,12 @@ jobs:
           print("YOUTUBE_UPLOAD_SUCCESS")
           print("Video ID:", response["id"])
           print("Video URL: https://www.youtube.com/watch?v=" + response["id"])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_file:
+              output_file.write("uploaded=true\\n")
           PY
 
       - name: Save CJP duplicate state after successful upload
-        if: github.event_name == 'schedule' && steps.cjp.outputs.should_run == 'true' && success()
+        if: github.event_name == 'schedule' && steps.cjp.outputs.should_run == 'true' && steps.upload.outputs.uploaded == 'true' && success()
         uses: actions/cache/save@v4
         with:
           path: .github/cjp-seen.json
