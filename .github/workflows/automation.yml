@@ -664,24 +664,32 @@ jobs:
               if isinstance(q, str) and q.strip()
           ]
 
-          # Keep search focused on the requested topic. Topic-specific AI queries
-          # lead; title and original input are included as additional exact anchors.
+          # Classify public-affairs stories for protest-style visuals even when the
+          # generated title/script omits the word "protest" (e.g. CJP/government stories).
+          topic_text = " ".join([topic, title] + generated_queries + [str(metadata.get("script", ""))]).lower()
+          protest_terms = ("protest", "protests", "demonstration", "rally", "dharna", "andolan", "jantarmantar", "जंतर मंतर", "प्रदर्शन", "धरना", "आंदोलन", "मोर्चा")
+          public_affairs_terms = ("cjp", "bjp", "modi", "government", "court", "election", "activist", "democracy", "citizens for justice", "राजनीति", "सरकार", "अदालत", "चुनाव", "विरोध")
+          is_protest_story = any(term in topic_text for term in protest_terms) or any(term in topic_text for term in public_affairs_terms)
+
+          # For protest/public-affairs stories, put protest footage queries FIRST.
+          # Otherwise the first four AI queries were consuming the photo/video search
+          # budget and generic newsroom-looking stock images kept winning.
           queries = []
-          for q in generated_queries[:4] + [title, topic]:
+          if is_protest_story:
+              priority_queries = [
+                  topic + " protest rally crowd",
+                  topic + " demonstration banners police barricades",
+                  "India public protest rally crowd police barricades",
+                  "Jantar Mantar protest India crowd"
+              ]
+          else:
+              priority_queries = []
+          for q in priority_queries + generated_queries[:4] + [title, topic]:
               q = q.strip() if isinstance(q, str) else ""
               if q and q.lower() not in {item.lower() for item in queries}:
                   queries.append(q)
           if not queries:
               raise RuntimeError("No topic-specific visual search queries were generated.")
-
-          # Search protest-related photos and videos when the story is about a protest.
-          topic_text = " ".join([topic, title] + generated_queries).lower()
-          protest_terms = ("protest", "protests", "demonstration", "rally", "dharna", "andolan", "jantarmantar", "जंतर मंतर", "प्रदर्शन", "धरना", "आंदोलन", "मोर्चा")
-          is_protest_story = any(term in topic_text for term in protest_terms)
-          if is_protest_story:
-              for q in [topic + " protest rally", topic + " demonstration crowd banners", "India public protest rally crowd police barricades"]:
-                  if q.strip() and q.lower() not in {item.lower() for item in queries}:
-                      queries.append(q)
           print("TOPIC_FOCUSED_VISUAL_QUERIES:")
           for q in queries:
               print(" - " + q)
