@@ -93,31 +93,71 @@ jobs:
               "telegraphindia.com", "livemint.com", "moneycontrol.com"
           )
 
-          # One low-frequency public search per scheduled run; no official X API key.
-          search_url = "https://unifapi.com/tools/x/search?" + urllib.parse.urlencode({
-              "q": "CJP -filter:replies"
-          })
-          try:
-              payload = get_json(search_url)
-          except Exception as e:
-              print("CJP_X_SEARCH_UNAVAILABLE:", repr(e))
+          # Search CJP/BJP plus major India-wide public issues; no official X API key.
+          search_queries = [
+              '"CJP" OR "BJP" India -filter:replies',
+              'BJP India parliament court election protest -filter:replies',
+              'India unemployment inflation farmers women safety corruption policy -filter:replies'
+          ]
+          items = []
+          known_ids = set()
+          search_failed = 0
+          for query in search_queries:
+              search_url = "https://unifapi.com/tools/x/search?" + urllib.parse.urlencode({"q": query})
+              try:
+                  payload = get_json(search_url)
+                  found = payload.get("posts", {}).get("items", [])
+                  if not isinstance(found, list):
+                      found = []
+                  for post in found:
+                      post_id = str(post.get("id", "")).strip()
+                      if post_id and post_id not in known_ids:
+                          known_ids.add(post_id)
+                          items.append(post)
+              except Exception as e:
+                  search_failed += 1
+                  print("X_SEARCH_WARNING:", query, repr(e))
+          if not items and search_failed == len(search_queries):
+              print("X_SEARCH_UNAVAILABLE: all searches failed")
               output("should_run", "false")
               raise SystemExit(0)
 
-          items = payload.get("posts", {}).get("items", [])
-          if not isinstance(items, list):
-              items = []
-          print("CJP_X_POSTS_RETURNED:", len(items))
+          print("INDIA_ISSUE_X_POSTS_RETURNED:", len(items))
           now = datetime.now(timezone.utc)
           selected = None
 
-          for post in items[:20]:
+          # Prioritize posts that explicitly concern CJP/BJP or a major national issue.
+          issue_terms = {
+              "cjp", "bjp", "parliament", "supreme", "court", "election",
+              "government", "minister", "protest", "unemployment", "inflation",
+              "farmers", "women", "safety", "corruption", "constitution",
+              "democracy", "policy", "india", "लोकसभा", "संसद", "चुनाव",
+              "सरकार", "महंगाई", "बेरोजगारी", "किसान", "भ्रष्टाचार",
+              "संविधान", "न्यायालय", "विरोध", "महिला", "भारत"
+          }
+          def post_priority(post):
+              body = str(post.get("text", "")).lower()
+              tokens = words(body)
+              relevant = len(tokens & issue_terms)
+              created = str(post.get("createdAt", ""))
+              return (relevant, created)
+          items.sort(key=post_priority, reverse=True)
+
+          for post in items[:40]:
               post_id = str(post.get("id", "")).strip()
               text = str(post.get("text", "")).strip()
               post_url = str(post.get("url", "")).strip()
               if not post_id or post_id in seen or not text or not post_url:
                   continue
-              if "cjp" not in text.lower():
+              lower_text = text.lower()
+              if not any(term in lower_text for term in (
+                  "cjp", "bjp", "parliament", "supreme court", "election",
+                  "government", "minister", "protest", "unemployment",
+                  "inflation", "farmers", "women", "safety", "corruption",
+                  "constitution", "democracy", "लोकसभा", "संसद", "चुनाव",
+                  "सरकार", "महंगाई", "बेरोजगारी", "किसान", "भ्रष्टाचार",
+                  "संविधान", "न्यायालय", "महिला", "भारत"
+              )):
                   continue
 
               substantive = [
@@ -129,7 +169,8 @@ jobs:
 
               # Verify against a recent independent news article from an established outlet.
               # A social post alone is never treated as confirmation.
-              query_terms = ["CJP"] + substantive[:5]
+              # Search the actual issue keywords; don't force every story to mention CJP.
+              query_terms = substantive[:6]
               rss_query = urllib.parse.quote(" ".join(query_terms))
               rss_url = (
                   "https://news.google.com/rss/search?q=" + rss_query
@@ -182,7 +223,7 @@ jobs:
                   break
 
           if not selected:
-              print("NO_CJP_POST_CORROBORATED_BY_RECENT_TRUSTED_NEWS; skipping upload.")
+              print("NO_MAJOR_INDIA_ISSUE_CORROBORATED_BY_RECENT_TRUSTED_NEWS; skipping upload.")
               output("should_run", "false")
               raise SystemExit(0)
 
@@ -194,11 +235,11 @@ jobs:
           with open("output/cjp_source.json", "w", encoding="utf-8") as f:
               json.dump(selected, f, ensure_ascii=False, indent=2)
 
-          topic = "CJP-related update: " + selected["text"][:500]
+          topic = "भारत का बड़ा मुद्दा (CJP/BJP/राष्ट्रीय विषय): " + selected["text"][:500]
           output("should_run", "true")
           output("topic", topic)
           output("post_id", selected["id"])
-          print("CJP_POST_SELECTED:", selected["url"])
+          print("INDIA_ISSUE_POST_SELECTED:", selected["url"])
           print("INDEPENDENT_NEWS_MATCHES:", len(selected["corroborating_articles"]))
           for article in selected["corroborating_articles"]:
               print("CORROBORATING_SOURCE:", article["source"], article["url"])
