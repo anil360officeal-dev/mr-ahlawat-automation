@@ -1452,7 +1452,7 @@ jobs:
 
           out = os.environ["GITHUB_OUTPUT"]
           with open(out, "a", encoding="utf-8") as f:
-              f.write("valid=false\\n")
+              f.write("valid=false\n")
 
           video = "output/mr-ahlawat-short.mp4"
           audio = "output/voiceover.wav"
@@ -1505,7 +1505,7 @@ jobs:
               fail(f"Duration outside expected 10-90 seconds: {duration:.2f}s.")
           print(f"QUALITY_CHECK_PASSED: {width}x{height}, {duration:.1f}s, captions={caption_count}, audio=yes")
           with open(out, "a", encoding="utf-8") as f:
-              f.write("valid=true\\n")
+              f.write("valid=true\n")
           PY
 
       - name: Save generated files
