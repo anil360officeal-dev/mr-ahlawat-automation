@@ -1360,11 +1360,14 @@ jobs:
           if not key:
               raise SystemExit("PIXABAY_API_KEY missing; SadTalker optional step skipped.")
           # Prefer a clearly front-facing Indian male reporter portrait, not a side/profile view.
+          # Pixabay's q parameter has a short query limit; keep every query concise.
+          # Search broad-to-specific so one overly long query cannot block all portrait options.
           queries = [
-              "Indian male field reporter front facing looking directly at camera holding handheld microphone realistic photo",
-              "Indian male journalist straight on head and shoulders press microphone natural face",
-              "Indian male street reporter facing camera documentary photo handheld microphone",
-              "Indian male news correspondent front view outdoors natural lighting portrait"
+              "indian reporter microphone",
+              "indian male journalist",
+              "indian news reporter",
+              "male reporter india",
+              "indian man microphone"
           ]
           session = requests.Session()
           for q in queries:
