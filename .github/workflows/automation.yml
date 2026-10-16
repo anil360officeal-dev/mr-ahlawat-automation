@@ -1298,6 +1298,52 @@ jobs:
           else:
               print("PIXABAY_API_KEY not configured; using photo visuals for this run.")
 
+          # Additional official free-video source: Pexels API (optional key).
+          # Search multiple topic-relevant queries; preserve creator/source attribution.
+          pexels_key = os.environ.get("PEXELS_API_KEY", "").strip()
+          if pexels_key:
+              pexels_queries = queries[:3] + ["India street crowd", "Indian city traffic", "public demonstration India"]
+              for search_term in pexels_queries:
+                  if video_count >= 2:
+                      break
+                  try:
+                      response = session.get(
+                          "https://api.pexels.com/v1/videos/search",
+                          headers={"Authorization": pexels_key},
+                          params={"query": search_term, "orientation": "portrait", "per_page": 10},
+                          timeout=30
+                      )
+                      response.raise_for_status()
+                      for hit in response.json().get("videos", []):
+                          if video_count >= 2:
+                              break
+                          files = sorted(hit.get("video_files", []),
+                              key=lambda item: item.get("width", 0) * item.get("height", 0), reverse=True)
+                          clip = next((item for item in files if item.get("link") and item.get("file_type", "").startswith("video/")), None)
+                          if not clip:
+                              continue
+                          try:
+                              video_response = session.get(clip["link"], timeout=60)
+                              video_response.raise_for_status()
+                              if len(video_response.content) < 20000:
+                                  continue
+                              video_path = f"output/media/clip_{video_count + 1:02d}.mp4"
+                              with open(video_path, "wb") as out:
+                                  out.write(video_response.content)
+                              video_count += 1
+                              user = hit.get("user", {}).get("name", "unknown creator")
+                              attribution.append(
+                                  f"Pexels video | ID: {hit.get('id', 'unknown')} | Creator: {user} | "
+                                  f"Query: {search_term} | Source: {hit.get('url', 'https://www.pexels.com/')}"
+                              )
+                              print(f"PEXELS_VIDEO_DOWNLOADED: {video_count} query={search_term}")
+                          except Exception as clip_error:
+                              print("Pexels video download warning:", repr(clip_error))
+                  except Exception as api_error:
+                      print(f"Pexels video search unavailable for '{search_term}': {api_error}")
+          else:
+              print("PEXELS_API_KEY not configured; Pexels B-roll search skipped.")
+
           with open("output/media_attribution.txt", "w", encoding="utf-8") as f:
               f.write("\n".join(attribution))
 
