@@ -897,11 +897,16 @@ jobs:
                               break
                           tags = str(hit.get("tags", "")).lower()
                           if is_protest_story and not any(term in tags for term in (
-                              "india", "indian", "protest", "demonstration", "rally",
-                              "crowd", "parliament", "delhi", "flag", "police", "politics"
+                              "india", "indian", "new delhi", "jantarmantar",
+                              "indian parliament", "india gate"
                           )):
                               print("SKIP_NON_INDIA_PUBLIC_AFFAIRS_IMAGE:", tags[:160])
                               continue
+                          if is_protest_story and not any(term in tags for term in (
+                              "protest", "demonstration", "rally", "crowd", "parliament",
+                              "delhi", "flag", "police", "politics", "election"
+                          )):
+                              print("SKIP_NON_NEWS_RELEVANT_IMAGE:", tags[:160])
                           if any(term in tags for term in (
                               "ukraine", "russia", "concert", "music festival",
                               "celebrity", "fashion model", "beauty portrait"
@@ -955,6 +960,13 @@ jobs:
 
                       title = result.get("title", "")
                       if not title or title in seen:
+                          continue
+                      title_lower = title.lower()
+                      if is_protest_story and not any(term in title_lower for term in (
+                          "india", "indian", "new delhi", "jantarmantar", "parliament",
+                          "abhijeet", "election commission", "india gate"
+                      )):
+                          print("SKIP_NON_INDIA_COMMONS_IMAGE:", title[:160])
                           continue
                       seen.add(title)
 
@@ -1283,10 +1295,14 @@ jobs:
                           print("SKIP_FEMALE_OR_UNRELATED_REPORTER_VIDEO:", tags[:160])
                           continue
                       if not any(word in tags for word in (
-                          "reporter", "journalist", "interview", "microphone",
-                          "selfie", "vlog", "news"
+                          "reporter", "journalist", "interview", "microphone", "news"
                       )):
                           print("SKIP_UNRELATED_REPORTER_VIDEO:", tags[:160])
+                          continue
+                      if not any(word in tags for word in (
+                          "india", "indian", "new delhi", "delhi"
+                      )):
+                          print("SKIP_NON_INDIAN_REPORTER_VIDEO:", tags[:160])
                           continue
                       if not any(word in tags.split(",") for word in ("male", "man", "men", "gentleman", "boy")):
                           print("SKIP_GENDER_UNCONFIRMED_REPORTER_VIDEO:", tags[:160])
@@ -1365,9 +1381,19 @@ jobs:
                           print("SKIP_SIDE_FACING_OR_UNREALISTIC_REPORTER_PORTRAIT:", tags[:160])
                           continue
                       if not any(word in tags for word in (
-                          "microphone", "reporter", "journalist", "interview", "news", "press", "portrait", "correspondent"
+                          "microphone", "reporter", "journalist", "interview", "news", "press", "correspondent"
                       )):
                           print("SKIP_NON_REPORTER_PORTRAIT:", tags[:160])
+                          continue
+                      if not any(word in tags for word in (
+                          "india", "indian", "new delhi", "delhi"
+                      )):
+                          print("SKIP_NON_INDIAN_REPORTER_PORTRAIT:", tags[:160])
+                          continue
+                      if any(word in tags for word in (
+                          "closeup", "close-up", "extreme close up", "headshot", "selfie"
+                      )):
+                          print("SKIP_CLOSEUP_REPORTER_PORTRAIT:", tags[:160])
                           continue
                       # Prefer natural, front-facing editorial portraits over fashion/model imagery.
                       if any(word in tags for word in (
@@ -1449,7 +1475,7 @@ jobs:
           # Keep generated talking face silent here; production narration is muxed later.
           subprocess.run([
               "ffmpeg", "-y", "-i", source, "-an", "-t", "7.5",
-              "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p,drawbox=x=470:y=1330:w=140:h=94:color=0x101010@0.92:t=fill,drawbox=x=530:y=1424:w=20:h=125:color=0x101010@0.92:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='CJP':fontcolor=white:fontsize=34:x=510:y=1360",
+              "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p",
               "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", target
           ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
           if os.path.getsize(target) < 10000:
