@@ -517,8 +517,7 @@ jobs:
 
           os.makedirs("output", exist_ok=True)
           with open("output/metadata.json", "w", encoding="utf-8") as f:
-              json.dump(data, f, ensure_ascii=False, indent=2)          print("GEMINI_SCRIPT_SUCCESS")
-          print("Generated title:", data["title"])
+              json.dump(data, f, ensure_ascii=False, indent=2)          print("GEMINI_SCRIPT_SUCCESS")          print("Generated title:", data["title"])
           print("Generated script:", data["script"])
           PY
 
@@ -1047,8 +1046,7 @@ jobs:
                           artist = meta.get("Artist", {}).get("value", "Unknown")
                           license_name = meta.get("LicenseShortName", {}).get("value", "Check license")                          source_page = "https://commons.wikimedia.org/wiki/" + quote(title.replace(" ", "_"))
                           attribution.append(                              f"{title} | Creator: {artist} | "
-                              f"License: {license_name} | Source: {source_page}"
-                          )
+                              f"License: {license_name} | Source: {source_page}"                          )
                           print(f"Downloaded image {saved}: {title}")
                           break
 
@@ -1497,8 +1495,7 @@ jobs:
           uv venv --python 3.8 /tmp/sadtalker-venv
           uv pip install --python /tmp/sadtalker-venv/bin/python \
             "torch==1.12.1+cpu" "torchvision==0.13.1+cpu" \
-            --extra-index-url https://download.pytorch.org/whl/cpu
-          grep -v -E '^[[:space:]]*gradio[[:space:]]*$' \
+            --extra-index-url https://download.pytorch.org/whl/cpu          grep -v -E '^[[:space:]]*gradio[[:space:]]*$' \
             /tmp/SadTalker/requirements.txt > /tmp/sadtalker-requirements.txt          uv pip install --python /tmp/sadtalker-venv/bin/python \
             -r /tmp/sadtalker-requirements.txt "opencv-python-headless==4.8.1.78"
           # Download only the crop/256px checkpoints required for this run.
@@ -1686,6 +1683,33 @@ jobs:
           with open("output/ticker.txt", "w", encoding="utf-8") as f:
               f.write(("  •  BREAKING UPDATE  •  " + ticker + "  •  ")[:240])
 
+          # Render a real, readable headline overlay image. The previous workflow
+          # created headline.txt/ticker.txt but never composited them into the MP4.
+          from PIL import Image, ImageDraw, ImageFont
+          from textwrap import wrap
+          overlay = Image.new("RGBA", (1080, 300), (0, 0, 0, 0))
+          draw = ImageDraw.Draw(overlay)
+          bold_path = "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf"
+          regular_path = "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf"
+          if not os.path.exists(bold_path):
+              bold_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+              regular_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+          headline_font = ImageFont.truetype(bold_path, 46)
+          label_font = ImageFont.truetype(bold_path, 26)
+          draw.rounded_rectangle((28, 10, 1052, 286), radius=24,
+                                 fill=(5, 17, 35, 224), outline=(255, 190, 45, 255), width=3)
+          draw.rounded_rectangle((28, 10, 43, 286), radius=6, fill=(229, 57, 53, 255))
+          draw.text((68, 28), "बड़ी खबर  |  MR AHLAWAT", font=label_font, fill=(0, 217, 255, 255))
+          clean_headline = re.sub(r"#\w+", "", headline).strip(" •|")
+          headline_lines = wrap(clean_headline, width=29)[:3] or ["आज की बड़ी खबर"]
+          y = 76
+          for line in headline_lines:
+              draw.text((68, y), line, font=headline_font, fill=(255, 255, 255, 255),
+                        stroke_width=1, stroke_fill=(5, 17, 35, 255))
+              y += 62
+          overlay.save("output/headline_overlay.png")
+          print("HEADLINE_OVERLAY_CREATED: output/headline_overlay.png")
+
           # Never promote unreviewed social-post clips/thumbnails into the main video.
           # For public-affairs/protest stories, moving clips from Commons/Pixabay
           # were not reliably topic-verified and caused unrelated visuals. Prefer
@@ -1836,7 +1860,8 @@ jobs:
           ffmpeg -y \
             -i output/visuals.mp4 \
             -i output/voiceover.mp3 \
-            -filter_complex "[0:v]drawbox=x=0:y=0:w=1080:h=112:color=0x071426@0.62:t=fill,drawbox=x=0:y=108:w=14:h=112:color=0xE53935:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=42:x=42:y=27:shadowcolor=black:shadowx=2:shadowy=2,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GROUND REPORT':fontcolor=0x00D9FF:fontsize=25:x=42:y=76,subtitles=filename=output/captions.ass[v]" \
+            -loop 1 -framerate 30 -i output/headline_overlay.png \
+            -filter_complex "[0:v]drawbox=x=0:y=0:w=1080:h=112:color=0x071426@0.80:t=fill,drawbox=x=0:y=108:w=14:h=112:color=0xE53935:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=42:x=42:y=27:shadowcolor=black:shadowx=2:shadowy=2,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GROUND REPORT':fontcolor=0x00D9FF:fontsize=25:x=42:y=76[base];[base][2:v]overlay=x=0:y=120:format=auto,subtitles=filename=output/captions.ass[v]" \
             -map "[v]" \
             -map 1:a:0 \
             -c:v libx264 \
@@ -1882,6 +1907,8 @@ jobs:
               print("QUALITY_CHECK_NOTE: No AI lip-sync reporter; final is a branded newsroom visual package with the original narration.")
           if not os.path.isfile(captions):
               fail("Hindi captions file is missing.")
+          if not os.path.isfile("output/headline_overlay.png") or os.path.getsize("output/headline_overlay.png") < 1000:
+              fail("Headline text overlay is missing or invalid.")
           with open(captions, encoding="utf-8") as f:
               caption_text = f.read()
           caption_count = caption_text.count("Dialogue:")
