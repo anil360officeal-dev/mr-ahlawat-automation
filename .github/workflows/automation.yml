@@ -724,6 +724,7 @@ jobs:
         env:
           SHORT_TOPIC: ${{ inputs.topic }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: |
           python - <<'PY'
           import os
