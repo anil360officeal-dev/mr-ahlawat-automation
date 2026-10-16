@@ -829,6 +829,33 @@ jobs:
               print("CJP_LOGO_IMAGE_READY: image_00_cjp.png")
           except Exception as logo_error:
               print("CJP_LOGO_IMAGE_WARNING:", repr(logo_error))
+              # Offline-safe fallback: create a clean CJP title card so the opening
+              # still identifies the requested party even if its hosted logo is down.
+              try:
+                  from PIL import Image, ImageDraw, ImageFont
+                  card = Image.new("RGB", (1080, 1920), (12, 20, 38))
+                  draw = ImageDraw.Draw(card)
+                  gold = (255, 190, 45)
+                  white = (255, 255, 255)
+                  draw.rounded_rectangle((110, 430, 970, 1290), radius=70,
+                                         outline=gold, width=10, fill=(20, 34, 58))
+                  draw.rounded_rectangle((355, 560, 725, 1070), radius=44,
+                                         outline=white, width=18, fill=(12, 20, 38))
+                  draw.arc((420, 500, 505, 625), 190, 300, fill=gold, width=12)
+                  draw.arc((575, 500, 660, 625), 240, 350, fill=gold, width=12)
+                  draw.text((540, 780), "CJP", fill=gold,
+                            font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 104),
+                            anchor="mm")
+                  draw.text((540, 1390), "COCKROACH JANATA PARTY", fill=white,
+                            font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 48),
+                            anchor="mm")
+                  draw.text((540, 1470), "CJP", fill=gold,
+                            font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 90),
+                            anchor="mm")
+                  card.save(cjp_logo_path)
+                  print("CJP_LOGO_FALLBACK_CARD_READY: image_00_cjp.png")
+              except Exception as fallback_error:
+                  print("CJP_LOGO_FALLBACK_FAILED:", repr(fallback_error))
 
           # Also fetch an India landmark image to keep the visual sequence India-focused.
           try:
@@ -1678,7 +1705,7 @@ jobs:
           )
           images = cjp_images + other_images[:4]
           reporter_path = "output/media/reporter_intro.mp4"
-          assets = [("image", path) for path in cjp_images]
+          assets = [("logo", path) for path in cjp_images]
           if os.path.exists(reporter_path):
               assets.append(("reporter", reporter_path))
           assets += [("video", path) for path in video_clips] + [
@@ -1743,6 +1770,13 @@ jobs:
                       f"eq=contrast=1.04:saturation=1.08:brightness=-0.01,"
                       f"unsharp=5:5:0.35:3:3:0.12,"
                       f"format=yuv420p,settb=AVTB[{label}]"
+                  )
+              elif kind == "logo":
+                  # Keep the entire CJP logo visible with clean margins; never crop it.
+                  filters.append(
+                      f"[{i}:v]scale=920:1500:force_original_aspect_ratio=decrease,"
+                      f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0x0c1426,"
+                      f"setsar=1,fps=30,format=yuv420p,settb=AVTB[{label}]"
                   )
               else:
                   filters.append(
