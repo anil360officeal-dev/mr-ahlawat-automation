@@ -814,24 +814,23 @@ jobs:
           attribution = []
           seen = set()
 
-          # Always place an unmistakable India visual first in the Short.
-          # Use the public Wikimedia-hosted Indian national flag thumbnail; no API key needed.
-          india_flag_path = "output/media/image_00_india.png"
-          india_flag_url = "https://upload.wikimedia.org/wikipedia/en/thumb/4/41/Flag_of_India.svg/1280px-Flag_of_India.svg.png"
+          # Start with the requested Cockroach Janata Party (CJP) logo, not a flag.
+          # Direct image is from the CJP logo announcement post on its website.
+          cjp_logo_path = "output/media/image_00_cjp.png"
+          cjp_logo_url = "https://www.cockroachjantapartycjp.com/api/media/1781499503994-7b7ad39a-1644-40ae-b979-e5b39655dc0c.png"
           try:
-              flag_response = session.get(india_flag_url, timeout=30)
-              flag_response.raise_for_status()
-              if len(flag_response.content) < 5000:
-                  raise RuntimeError("Indian flag image download was too small")
-              with open(india_flag_path, "wb") as flag_file:
-                  flag_file.write(flag_response.content)
-              attribution.append("Indian national flag | Source: Wikimedia-hosted Wikipedia flag image")
-              print("INDIA_FLAG_IMAGE_READY: image_00_india.png")
-          except Exception as flag_error:
-              print("INDIA_FLAG_IMAGE_WARNING:", repr(flag_error))
+              logo_response = session.get(cjp_logo_url, timeout=35)
+              logo_response.raise_for_status()
+              if len(logo_response.content) < 5000:
+                  raise RuntimeError("CJP logo image download was too small")
+              with open(cjp_logo_path, "wb") as logo_file:
+                  logo_file.write(logo_response.content)
+              attribution.append("Cockroach Janata Party logo | Source: CJP website logo announcement")
+              print("CJP_LOGO_IMAGE_READY: image_00_cjp.png")
+          except Exception as logo_error:
+              print("CJP_LOGO_IMAGE_WARNING:", repr(logo_error))
 
-          # Also fetch an India landmark image so the opening establishes India visually,
-          # rather than relying on a flag-only frame. The flag remains the very first frame.
+          # Also fetch an India landmark image to keep the visual sequence India-focused.
           try:
               gate_search = session.get(
                   "https://commons.wikimedia.org/w/api.php",
@@ -1665,14 +1664,14 @@ jobs:
           # Keep topic-search photos only; unverified social thumbnails caused unrelated
           # close-ups to become the main visual in earlier renders.
           all_images = sorted(glob.glob("output/media/image_*"))
-          india_images = [
+          cjp_images = [
               path for path in all_images
-              if os.path.basename(path) == "image_00_india.png"
+              if os.path.basename(path) == "image_00_cjp.png"
           ]
-          other_images = [path for path in all_images if path not in india_images]
-          images = india_images + other_images[:4]
+          other_images = [path for path in all_images if path not in cjp_images]
+          images = cjp_images + other_images[:4]
           reporter_path = "output/media/reporter_intro.mp4"
-          assets = [("image", path) for path in india_images]
+          assets = [("image", path) for path in cjp_images]
           if os.path.exists(reporter_path):
               assets.append(("reporter", reporter_path))
           assets += [("video", path) for path in video_clips] + [
@@ -1682,24 +1681,23 @@ jobs:
           if not assets:
               raise RuntimeError("No image or video visuals found.")
 
-          # Start with the Indian flag image, then the reporter, then topic footage/photos.
-          # This avoids an uncanny AI face being the very first frame.
+          # Start with CJP logo card, then reporter, then India-focused topic footage/photos.
           transition_duration = 0.45
-          india_first = (
+          cjp_first = (
               len(assets) > 0 and assets[0][0] == "image"
-              and os.path.basename(assets[0][1]).startswith("image_00_india")
+              and os.path.basename(assets[0][1]) == "image_00_cjp.png"
           )
           reporter_index = next(
               (i for i, item in enumerate(assets) if item[0] == "reporter"), None
           )
-          if india_first and reporter_index == 1 and len(assets) > 2:
-              india_duration = min(3.0, max(1.5, duration * 0.06))
+          if cjp_first and reporter_index == 1 and len(assets) > 2:
+              cjp_duration = min(3.0, max(1.5, duration * 0.06))
               reporter_duration = min(7.5, max(3.0, duration * 0.2))
               remaining_duration = (
                   duration + transition_duration * (len(assets) - 1)
-                  - india_duration - reporter_duration
+                  - cjp_duration - reporter_duration
               ) / (len(assets) - 2)
-              segment_durations = [india_duration, reporter_duration] + [
+              segment_durations = [cjp_duration, reporter_duration] + [
                   remaining_duration for _ in assets[2:]
               ]
           elif reporter_index == 0 and len(assets) > 1:
