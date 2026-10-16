@@ -1613,7 +1613,7 @@ jobs:
 
           # Fallback retains every script word and distributes timings across the audio.
           if not timed_words:
-              script_words = re.findall(r"\\S+", script)
+              script_words = re.findall(r"\S+", script)
               if not script_words:
                   raise RuntimeError("No caption words generated")
               weights = [max(1, len(word.strip("।,!?;:")) ) for word in script_words]
