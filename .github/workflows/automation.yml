@@ -1268,6 +1268,32 @@ jobs:
               "cjp", "protest", "धरना", "प्रदर्शन", "आंदोलन", "bjp", "जंतर मंतर"
           ))
 
+          # User-selected Pexels stock clip: Indian street-market interview.
+          # Use this exact clip first so the intro does not depend on Pixabay tags/API.
+          pexels_url = "https://videos.pexels.com/video-files/29146998/12589797_1920_1080_30fps.mp4"
+          try:
+              response = requests.get(pexels_url, timeout=90)
+              response.raise_for_status()
+              temp = os.path.join(media_dir, "pexels_street_interview_source.mp4")
+              with open(temp, "wb") as out:
+                  out.write(response.content)
+              if os.path.getsize(temp) > 100000:
+                  result = subprocess.run([
+                      "ffmpeg", "-y", "-i", temp, "-t", "7.5",
+                      "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p",
+                      "-an", "-c:v", "libx264", "-preset", "veryfast",
+                      "-pix_fmt", "yuv420p", output_path
+                  ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                  os.remove(temp)
+                  if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
+                      print("USER_SELECTED_PEXELS_REPORTER_CLIP_READY: video 29146998; 7.5-second vertical crop.")
+                      print("NOTE: stock interview footage is illustrative; its lips are NOT synced to the Hindi voice-over.")
+                      raise SystemExit(0)
+          except SystemExit:
+              raise
+          except Exception as error:
+              print("USER_SELECTED_PEXELS_CLIP_DOWNLOAD_FAILED; trying Pixabay fallback:", repr(error))
+
           if not api_key:
               print("STREET_REPORTER_INTRO_SKIPPED: Pixabay key unavailable; use topic visuals.")
               raise SystemExit(0)
