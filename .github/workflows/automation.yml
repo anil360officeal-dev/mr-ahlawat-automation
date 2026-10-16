@@ -517,8 +517,7 @@ jobs:
 
           os.makedirs("output", exist_ok=True)
           with open("output/metadata.json", "w", encoding="utf-8") as f:
-              json.dump(data, f, ensure_ascii=False, indent=2)
-          print("GEMINI_SCRIPT_SUCCESS")
+              json.dump(data, f, ensure_ascii=False, indent=2)          print("GEMINI_SCRIPT_SUCCESS")
           print("Generated title:", data["title"])
           print("Generated script:", data["script"])
           PY
@@ -903,10 +902,10 @@ jobs:
           except Exception as gate_error:
               print("INDIA_LANDMARK_IMAGE_WARNING:", repr(gate_error))
 
-          # Prefer Pixabay photos first, using the configured repository secret.
-          # If Pixabay has no matching photos, Wikimedia Commons is the topic-focused fallback.
+          # For public-affairs/protest stories, do NOT use loosely matched stock photos.
+          # Use the India Gate landmark plus designed newsroom cards instead.
           image_key = os.environ.get("PIXABAY_API_KEY", "").strip()
-          if image_key:
+          if image_key and not is_protest_story:
               for search_term in queries[:4]:
                   if saved >= 5:
                       break
@@ -966,7 +965,7 @@ jobs:
                   except Exception as pixabay_error:
                       print(f"Pixabay photo search warning for '{search_term}': {pixabay_error}")
 
-          for search_term in queries[:4]:
+          for search_term in ([] if is_protest_story else queries[:4]):
               if saved >= 5:
                   break
 
@@ -1047,8 +1046,7 @@ jobs:
                           meta = info.get("extmetadata", {})
                           artist = meta.get("Artist", {}).get("value", "Unknown")
                           license_name = meta.get("LicenseShortName", {}).get("value", "Check license")                          source_page = "https://commons.wikimedia.org/wiki/" + quote(title.replace(" ", "_"))
-                          attribution.append(
-                              f"{title} | Creator: {artist} | "
+                          attribution.append(                              f"{title} | Creator: {artist} | "
                               f"License: {license_name} | Source: {source_page}"
                           )
                           print(f"Downloaded image {saved}: {title}")
@@ -1205,15 +1203,43 @@ jobs:
               print("No topic-matched photos found; will use clearly designed newsroom graphics rather than unrelated stock photos.")
 
           if saved == 0:
-              print("All photo sources failed; creating newsroom graphic fallback.")
-              fallback_colors = ["0x101b30", "0x17243a", "0x202b40", "0x152033", "0x101827"]
-              for i, color in enumerate(fallback_colors, start=1):
-                  output_path = f"output/media/image_{i:02d}.png"
-                  subprocess.run(
-                      ["ffmpeg", "-y", "-f", "lavfi", "-i", f"color=c={color}:s=1080x1920", "-frames:v", "1", output_path],
-                      check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                  )
-              print("NEWSROOM_GRAPHIC_FALLBACKS_CREATED: 5")
+              print("No verified topic photos available; creating designed newsroom cards, not random stock images.")
+              from PIL import Image, ImageDraw, ImageFont
+              from textwrap import wrap
+              headline = " ".join(str(metadata.get("title", "आज की बड़ी खबर")).split())
+              script = " ".join(str(metadata.get("script", "")).split())
+              bold_path = "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf"
+              regular_path = "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf"
+              if not os.path.exists(bold_path):
+                  bold_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+                  regular_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+              big = ImageFont.truetype(bold_path, 70)
+              medium = ImageFont.truetype(bold_path, 52)
+              small = ImageFont.truetype(regular_path, 34)
+              cards = [
+                  ("GROUND REPORT", headline[:90], "खबर और उसके अहम तथ्य"),
+                  ("क्या है पूरा मामला?", script[:105], "तथ्य • संदर्भ • अपडेट"),
+                  ("MR AHLAWAT", headline[:80], "भारत की खबर, साफ़ और सीधे"),
+                  ("मुख्य जानकारी", script[105:215] or headline[:80], "जो पता है, वही बताएँगे"),
+                  ("लेटेस्ट अपडेट", headline[:90], "खबर से जुड़े रहें"),
+              ]
+              for i, (eyebrow, body, footer) in enumerate(cards, start=1):
+                  card = Image.new("RGB", (1080, 1920), (10, 22, 42))
+                  draw = ImageDraw.Draw(card)
+                  draw.rectangle((0, 0, 1080, 20), fill=(229, 57, 53))
+                  draw.rectangle((65, 170, 1015, 176), fill=(255, 190, 45))
+                  draw.text((70, 95), eyebrow, font=medium, fill=(255, 255, 255))
+                  draw.rounded_rectangle((55, 300, 1025, 1390), radius=38,
+                                         fill=(20, 39, 66), outline=(70, 105, 145), width=3)
+                  y = 390
+                  for line in wrap(body, width=20)[:8]:
+                      draw.text((95, y), line, font=big, fill=(255, 255, 255))
+                      y += 112
+                  draw.rectangle((0, 1630, 1080, 1920), fill=(7, 16, 31))
+                  draw.text((70, 1695), "MR AHLAWAT  •  HINDI NEWS", font=small, fill=(0, 217, 255))
+                  draw.text((70, 1785), footer, font=small, fill=(255, 190, 45))
+                  card.save(f"output/media/image_{i:02d}.png")
+              print("DESIGNED_NEWSROOM_GRAPHIC_CARDS_CREATED: 5")
 
           # Try to add genuine moving B-roll from Pixabay when its API key is configured.
           video_key = os.environ.get("PIXABAY_API_KEY", "").strip()
@@ -1497,8 +1523,7 @@ jobs:
             --result_dir "$GITHUB_WORKSPACE/output/sadtalker" \
             --preprocess crop \
             --size 256 \
-            --still \
-            --cpu
+            --still \            --cpu
           cd "$GITHUB_WORKSPACE"
 
           python - <<'PY'
