@@ -911,9 +911,10 @@ jobs:
                               continue
                           if is_protest_story and not any(term in tags for term in (
                               "protest", "demonstration", "rally", "crowd", "parliament",
-                              "delhi", "flag", "police", "politics", "election"
+                              "delhi", "flag", "police", "politics", "election", "civic"
                           )):
                               print("SKIP_NON_NEWS_RELEVANT_IMAGE:", tags[:160])
+                              continue
                           if any(term in tags for term in (
                               "ukraine", "russia", "concert", "music festival",
                               "celebrity", "fashion model", "beauty portrait"
@@ -1669,6 +1670,12 @@ jobs:
               if os.path.basename(path) == "image_00_cjp.png"
           ]
           other_images = [path for path in all_images if path not in cjp_images]
+          # Prefer the verified India Gate landmark immediately after the reporter;
+          # remaining topic images follow it, with unrelated protest stock rejected above.
+          other_images = sorted(
+              other_images,
+              key=lambda path: (0 if os.path.basename(path) == "image_01_india_gate.jpg" else 1, path)
+          )
           images = cjp_images + other_images[:4]
           reporter_path = "output/media/reporter_intro.mp4"
           assets = [("image", path) for path in cjp_images]
