@@ -1644,7 +1644,7 @@ jobs:
                       karaoke.append(f"{{\\kf{centiseconds}}}{ass_safe(word['text'])}")
                   f.write(
                       f"Dialogue: 0,{stamp(group_start)},{stamp(group_end)},Default,,0,0,0,,"
-                      + " ".join(karaoke) + "\\N"
+                      + " ".join(karaoke) + "\\n"
                   )
 
           # Create topic-specific text assets for the newsroom layout.
