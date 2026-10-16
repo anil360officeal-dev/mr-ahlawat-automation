@@ -775,6 +775,28 @@ jobs:
               print(" - " + q)
           print("PROTEST_VISUAL_MODE:", is_protest_story)
 
+          # Force India-relevant visual search for public-affairs/protest stories.
+          if is_protest_story:
+              india_queries = [
+                  "India protest rally crowd",
+                  "Jantar Mantar protest New Delhi",
+                  "Indian Parliament New Delhi",
+                  "India Gate New Delhi India"
+              ]
+              generated_queries = [
+                  q for q in generated_queries
+                  if not any(term in q.lower() for term in (
+                      "ukraine", "russia", "concert", "music festival",
+                      "celebrity", "fashion model"
+                  ))
+              ]
+              queries = []
+              for q in india_queries + generated_queries[:3] + [title, topic]:
+                  q = q.strip() if isinstance(q, str) else ""
+                  if q and q.lower() not in {item.lower() for item in queries}:
+                      queries.append(q)
+              print("INDIA_RELEVANT_VISUALS_ENFORCED:", queries[:7])
+
           session = requests.Session()
           session.headers.update({
               "User-Agent": "MrAhlawatShorts/1.0 (image search)"
@@ -825,6 +847,19 @@ jobs:
                       for hit in api.json().get("hits", []):
                           if saved >= 5:
                               break
+                          tags = str(hit.get("tags", "")).lower()
+                          if is_protest_story and not any(term in tags for term in (
+                              "india", "indian", "protest", "demonstration", "rally",
+                              "crowd", "parliament", "delhi", "flag", "police", "politics"
+                          )):
+                              print("SKIP_NON_INDIA_PUBLIC_AFFAIRS_IMAGE:", tags[:160])
+                              continue
+                          if any(term in tags for term in (
+                              "ukraine", "russia", "concert", "music festival",
+                              "celebrity", "fashion model", "beauty portrait"
+                          )):
+                              print("SKIP_UNRELATED_STOCK_IMAGE:", tags[:160])
+                              continue
                           image_url = hit.get("largeImageURL") or hit.get("webformatURL")
                           if not image_url or image_url in seen:
                               continue
@@ -1276,9 +1311,10 @@ jobs:
                           print("SKIP_FEMALE_REPORTER_PORTRAIT:", tags[:160])
                           continue
                       if any(word in tags for word in (
-                          "profile", "side view", "sideview", "looking away", "back view"
+                          "profile", "side view", "sideview", "looking away", "back view",
+                          "silhouette", "faceless", "mask", "statue", "mannequin"
                       )):
-                          print("SKIP_SIDE_FACING_REPORTER_PORTRAIT:", tags[:160])
+                          print("SKIP_SIDE_FACING_OR_UNREALISTIC_REPORTER_PORTRAIT:", tags[:160])
                           continue
                       if not any(word in tags for word in (
                           "microphone", "reporter", "journalist", "interview", "news", "press", "portrait", "correspondent"
@@ -1476,7 +1512,7 @@ jobs:
           all_images = sorted(glob.glob("output/media/image_*"))
           india_images = [
               path for path in all_images
-              if os.path.basename(path).startswith("image_00_india")
+              if os.path.basename(path) == "image_00_india.png"
           ]
           other_images = [path for path in all_images if path not in india_images]
           images = india_images + other_images[:4]
