@@ -890,7 +890,7 @@ jobs:
                   gate_image.raise_for_status()
                   if len(gate_image.content) < 8000:
                       continue
-                  with open("output/media/image_01_india_gate.jpg", "wb") as out:
+                  with open("output/media/india_gate_landmark.jpg", "wb") as out:
                       out.write(gate_image.content)
                   meta = info.get("extmetadata", {})
                   artist = meta.get("Artist", {}).get("value", "Unknown")
@@ -1691,7 +1691,7 @@ jobs:
           video_clips = sorted(glob.glob("output/media/clip_*.mp4"))[:2]
           # Keep topic-search photos only; unverified social thumbnails caused unrelated
           # close-ups to become the main visual in earlier renders.
-          all_images = sorted(glob.glob("output/media/image_*"))
+          all_images = sorted(set(glob.glob("output/media/image_*") + glob.glob("output/media/india_gate_landmark.jpg")))
           cjp_images = [
               path for path in all_images
               if os.path.basename(path) == "image_00_cjp.png"
@@ -1701,7 +1701,7 @@ jobs:
           # remaining topic images follow it, with unrelated protest stock rejected above.
           other_images = sorted(
               other_images,
-              key=lambda path: (0 if os.path.basename(path) == "image_01_india_gate.jpg" else 1, path)
+              key=lambda path: (0 if os.path.basename(path) == "india_gate_landmark.jpg" else 1, path)
           )
           images = cjp_images + other_images[:4]
           reporter_path = "output/media/reporter_intro.mp4"
