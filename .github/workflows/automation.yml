@@ -1455,9 +1455,16 @@ jobs:
                       )):
                           print("SKIP_NON_REPORTER_PORTRAIT:", tags[:160])
                           continue
-                      if not any(word in tags for word in (
+                      has_india_context = any(word in tags for word in (
                           "india", "indian", "new delhi", "delhi"
-                      )):
+                      ))
+                      has_explicit_reporter_role = any(word in tags for word in (
+                          "reporter", "journalist", "news", "press", "correspondent"
+                      ))
+                      # Pixabay tags often omit nationality even when the search query is India-specific.
+                      # Do not let a generic microphone/singer portrait pass just because it has a mic:
+                      # require an explicit newsroom/journalism tag when India itself is absent.
+                      if not has_india_context and not has_explicit_reporter_role:
                           print("SKIP_NON_INDIAN_REPORTER_PORTRAIT:", tags[:160])
                           continue
                       if any(word in tags for word in (
