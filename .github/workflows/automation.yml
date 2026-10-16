@@ -1725,6 +1725,8 @@ jobs:
       - name: Validate rendered Short before upload
         id: quality
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        env:
+          PREVIEW_ONLY: ${{ inputs.preview_only }}
         run: |
           python - <<'PY'
           import json, os, subprocess, sys, re
@@ -1747,7 +1749,11 @@ jobs:
           if not os.path.isfile(audio) or os.path.getsize(audio) < 10000:
               fail("Voice-over WAV is missing or suspiciously small.")
           if not os.path.isfile("output/sadtalker_success.txt"):
-              fail("No verified AI lip-sync reporter was generated; refusing to upload fallback-only video.")
+              preview_only = os.environ.get("PREVIEW_ONLY", "false").lower() == "true"
+              if preview_only:
+                  print("QUALITY_CHECK_WARNING: No verified AI lip-sync reporter was generated; saving preview artifact for diagnosis only. YouTube upload is disabled in preview mode.")
+              else:
+                  fail("No verified AI lip-sync reporter was generated; refusing to upload fallback-only video.")
           if not os.path.isfile(captions):
               fail("Hindi captions file is missing.")
           with open(captions, encoding="utf-8") as f:
