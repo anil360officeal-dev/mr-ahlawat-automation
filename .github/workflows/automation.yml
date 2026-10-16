@@ -822,6 +822,54 @@ jobs:
           except Exception as flag_error:
               print("INDIA_FLAG_IMAGE_WARNING:", repr(flag_error))
 
+          # Also fetch an India landmark image so the opening establishes India visually,
+          # rather than relying on a flag-only frame. The flag remains the very first frame.
+          try:
+              gate_search = session.get(
+                  "https://commons.wikimedia.org/w/api.php",
+                  params={"action": "query", "format": "json", "list": "search",
+                          "srnamespace": 6, "srsearch": "India Gate New Delhi landmark photograph",
+                          "srlimit": 8},
+                  timeout=25
+              )
+              gate_search.raise_for_status()
+              for gate_item in gate_search.json().get("query", {}).get("search", []):
+                  gate_title = gate_item.get("title", "")
+                  if not gate_title:
+                      continue
+                  gate_detail = session.get(
+                      "https://commons.wikimedia.org/w/api.php",
+                      params={"action": "query", "format": "json", "titles": gate_title,
+                              "prop": "imageinfo", "iiprop": "url|mime|extmetadata",
+                              "iiurlwidth": 1280},
+                      timeout=25
+                  )
+                  gate_detail.raise_for_status()
+                  pages = gate_detail.json().get("query", {}).get("pages", {})
+                  info = next((p["imageinfo"][0] for p in pages.values()
+                               if p.get("imageinfo") and
+                               p["imageinfo"][0].get("mime", "").startswith("image/")), {})
+                  gate_url = info.get("thumburl") or info.get("url")
+                  if not gate_url:
+                      continue
+                  gate_image = session.get(gate_url, timeout=35)
+                  gate_image.raise_for_status()
+                  if len(gate_image.content) < 8000:
+                      continue
+                  with open("output/media/image_01_india_gate.jpg", "wb") as out:
+                      out.write(gate_image.content)
+                  meta = info.get("extmetadata", {})
+                  artist = meta.get("Artist", {}).get("value", "Unknown")
+                  license_name = meta.get("LicenseShortName", {}).get("value", "Check license")
+                  source_page = "https://commons.wikimedia.org/wiki/" + quote(gate_title.replace(" ", "_"))
+                  attribution.append(
+                      f"India Gate, New Delhi | Creator: {artist} | License: {license_name} | Source: {source_page}"
+                  )
+                  print("INDIA_LANDMARK_IMAGE_READY:", gate_title)
+                  break
+          except Exception as gate_error:
+              print("INDIA_LANDMARK_IMAGE_WARNING:", repr(gate_error))
+
           # Prefer Pixabay photos first, using the configured repository secret.
           # If Pixabay has no matching photos, Wikimedia Commons is the topic-focused fallback.
           image_key = os.environ.get("PIXABAY_API_KEY", "").strip()
