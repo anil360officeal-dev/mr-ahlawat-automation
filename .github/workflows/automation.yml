@@ -1555,52 +1555,96 @@ jobs:
           if duration <= 0:
               raise RuntimeError("Voice-over duration is invalid")
 
-          sentences = re.split(r'(?<=[।!?])\s+', script)
-          chunks = []
+          # Generate word-level timestamps from the actual Hindi voice-over.
+          # Use karaoke-style ASS tags so each spoken word lights up as it is spoken.
+          timed_words = []
+          try:
+              subprocess.run(
+                  ["python", "-m", "pip", "install", "--quiet", "faster-whisper==1.1.1"],
+                  check=True, timeout=240
+              )
+              from faster_whisper import WhisperModel
+              print("CAPTION_ALIGNMENT: loading multilingual Whisper base model")
+              model = WhisperModel("base", device="cpu", compute_type="int8")
+              segments, _info = model.transcribe(
+                  "output/voiceover.wav", language="hi", word_timestamps=True,
+                  vad_filter=True, beam_size=3
+              )
+              for segment in segments:
+                  if segment.words:
+                      for word in segment.words:
+                          token = (word.word or "").strip()
+                          if token:
+                              timed_words.append({
+                                  "text": token,
+                                  "start": max(0.0, float(word.start)),
+                                  "end": min(duration, max(float(word.end), float(word.start) + 0.08))
+                              })
+              print("CAPTION_WORD_TIMESTAMPS:", len(timed_words))
+          except Exception as error:
+              print("CAPTION_ALIGNMENT_FALLBACK:", repr(error))
 
-          for sentence in sentences:
-              words = sentence.split()
-              line = ""
-              for word in words:
-                  candidate = (line + " " + word).strip()
-                  if len(candidate) > 32 and line:
-                      chunks.append(line)
-                      line = word
-                  else:
-                      line = candidate
-              if line:
-                  chunks.append(line)
-
-          if not chunks:
-              raise RuntimeError("No captions generated")
+          # Fallback retains every script word and distributes timings across the audio.
+          if not timed_words:
+              script_words = re.findall(r"\\S+", script)
+              if not script_words:
+                  raise RuntimeError("No caption words generated")
+              weights = [max(1, len(word.strip("।,!?;:")) ) for word in script_words]
+              total = sum(weights)
+              cursor = 0.0
+              for token, weight in zip(script_words, weights):
+                  end = cursor + duration * weight / total
+                  timed_words.append({"text": token, "start": cursor, "end": end})
+                  cursor = end
 
           def stamp(seconds):
-              cs = int(round(seconds * 100))
+              cs = max(0, int(round(seconds * 100)))
               h, cs = divmod(cs, 360000)
               m, cs = divmod(cs, 6000)
               s, cs = divmod(cs, 100)
               return f"{h}:{m:02}:{s:02}.{cs:02}"
 
-          weights = [max(1, len(c)) for c in chunks]
-          total_weight = sum(weights)
-          elapsed = 0.0
+          def ass_safe(value):
+              return value.replace("{", "(").replace("}", ")").replace("\\", "")
+
+          # Group 3–5 words per caption card for phone readability.
+          groups = []
+          current = []
+          char_count = 0
+          for word in timed_words:
+              token_len = len(word["text"])
+              if current and (len(current) >= 5 or char_count + token_len > 24):
+                  groups.append(current)
+                  current = []
+                  char_count = 0
+              current.append(word)
+              char_count += token_len + 1
+          if current:
+              groups.append(current)
 
           with open("output/captions.ass", "w", encoding="utf-8") as f:
-              f.write("[Script Info]\n")
-              f.write("ScriptType: v4.00+\n")
-              f.write("PlayResX: 1080\nPlayResY: 1920\n\n")
-              f.write("[V4+ Styles]\n")
-              f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-              f.write("Style: Default,Noto Sans Devanagari,46,&H00FFFFFF,&H0000FFFF,&H0010152B,&HFF000000,-1,0,0,0,100,100,0,0,1,2,0,2,70,70,260,1\\n\\n")
-              f.write("[Events]\n")
-              f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
-
-              for chunk, weight in zip(chunks, weights):
-                  start = elapsed
-                  elapsed += duration * weight / total_weight
-                  safe_chunk = chunk.replace("{", "(").replace("}", ")")
+              f.write("[Script Info]\\n")
+              f.write("ScriptType: v4.00+\\n")
+              f.write("PlayResX: 1080\\nPlayResY: 1920\\n\\n")
+              f.write("[V4+ Styles]\\n")
+              f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\\n")
+              # Large bold white text with yellow word-by-word karaoke highlight and dark boxed backing.
+              f.write("Style: Default,Noto Sans Devanagari,62,&H0000D7FF,&H00FFFFFF,&H0010152B,&H90000000,-1,0,0,0,100,100,0,0,3,3,1,2,65,65,300,1\\n\\n")
+              f.write("[Events]\\n")
+              f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\\n")
+              for group in groups:
+                  group_start = max(0.0, group[0]["start"])
+                  group_end = min(duration, max(group[-1]["end"], group_start + 0.18))
+                  karaoke = []
+                  for i, word in enumerate(group):
+                      next_start = group[i + 1]["start"] if i + 1 < len(group) else word["end"]
+                      # Include natural inter-word pause in the current word's highlight, but cap it.
+                      span = max(0.08, min(1.2, next_start - word["start"]))
+                      centiseconds = max(1, int(round(span * 100)))
+                      karaoke.append(f"{{\\kf{centiseconds}}}{ass_safe(word['text'])}")
                   f.write(
-                      f"Dialogue: 0,{stamp(start)},{stamp(elapsed)},Default,,0,0,0,,{safe_chunk}\n"
+                      f"Dialogue: 0,{stamp(group_start)},{stamp(group_end)},Default,,0,0,0,,"
+                      + " ".join(karaoke) + "\\N"
                   )
 
           # Create topic-specific text assets for the newsroom layout.
