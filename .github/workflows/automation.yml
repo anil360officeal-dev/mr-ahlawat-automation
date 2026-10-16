@@ -869,7 +869,9 @@ jobs:
               gate_search.raise_for_status()
               for gate_item in gate_search.json().get("query", {}).get("search", []):
                   gate_title = gate_item.get("title", "")
-                  if not gate_title:
+                  # Wikimedia search can return unrelated satellite/aerial photos.
+                  # Only accept a file whose actual title identifies India Gate.
+                  if "india gate" not in gate_title.lower():
                       continue
                   gate_detail = session.get(
                       "https://commons.wikimedia.org/w/api.php",
@@ -967,7 +969,13 @@ jobs:
                   except Exception as pixabay_error:
                       print(f"Pixabay photo search warning for '{search_term}': {pixabay_error}")
 
-          for search_term in ([] if is_protest_story else queries[:4]):
+          # Search relevant Commons photos for protest/public-affairs stories too.
+          # The title filters below reject unrelated files; never substitute text cards.
+          commons_terms = queries[:4] + (
+              ["India protest demonstration rally crowd", "Jantar Mantar protest India"]
+              if is_protest_story else []
+          )
+          for search_term in commons_terms:
               if saved >= 5:
                   break
 
@@ -1242,8 +1250,10 @@ jobs:
                   draw.rectangle((0, 1630, 1080, 1920), fill=(7, 16, 31))
                   draw.text((70, 1695), "MR AHLAWAT  •  HINDI NEWS", font=small, fill=(0, 217, 255))
                   draw.text((70, 1785), footer, font=small, fill=(255, 190, 45))
-                  card.save(f"output/media/image_{i:02d}.png")
-              print("DESIGNED_NEWSROOM_GRAPHIC_CARDS_CREATED: 5")
+                  # Keep these as optional graphics only; never let them masquerade
+                  # as real photo assets in the video sequence.
+                  card.save(f"output/media/graphic_card_{i:02d}.png")
+              print("DESIGNED_NEWSROOM_GRAPHIC_CARDS_CREATED_BUT_NOT_USED_AS_PHOTOS: 5")
 
           # Try to add genuine moving B-roll from Pixabay when its API key is configured.
           video_key = os.environ.get("PIXABAY_API_KEY", "").strip()
@@ -1293,7 +1303,8 @@ jobs:
 
           visuals = [
               name for name in os.listdir("output/media")
-              if (name.startswith("image_") or name.startswith("social_image_"))
+              if (name.startswith("image_") or name.startswith("social_image_")
+                  or name == "india_gate_landmark.jpg")
               and name.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
           ]
           visuals = sorted(visuals)[:7]
