@@ -337,6 +337,8 @@ jobs:
           - If the topic/source is about CJP, cover any relevant update or information about CJP, without requiring it to be anti-BJP.
           - Otherwise prioritize a genuinely newsworthy viral story critical of BJP/the BJP-led government, including major controversies, protests, court/election developments, public-policy failures, inflation, unemployment, farmers, women's safety, corruption allegations, or other major public-interest issues.
           - For manual runs where no source is supplied, do not pretend to know today's latest news. Ask the model to produce a factual, cautious news explainer only if it can support the topic; never invent a current event. Scheduled runs must be grounded in the selected post and corroborating coverage.
+          - The spoken script MUST begin exactly with “हेलो दोस्तों,” so the reporter greets viewers directly before the news.
+          - Do NOT say “Mr Ahlawat”, “मिस्टर अहलावत”, “मैं Mr Ahlawat”, or any channel-name self-introduction anywhere in the spoken script. The channel name may appear only as on-screen branding.
           - Make the opening sound like a concise Hindi ground reporter speaking directly to a phone camera on the street. Give the key fact, why it matters, and what is confirmed versus alleged. Avoid generic filler.
 
           X source post and independent corroborating coverage (empty for manual topic runs):
@@ -358,6 +360,7 @@ jobs:
           - Prefer easy-to-pronounce words and clean sentence structure; avoid tongue-twisters, stacked English terms, repeated filler, and generic AI phrases.
           - Never shout, over-dramatize, sensationalize, invent facts, or claim unverified breaking news.
           - Script should be around 40–48 seconds when spoken (roughly 95–110 Hindi words), with a brisk pace and no padding.
+          - Begin with the exact greeting “हेलो दोस्तों,” then move immediately into the news hook; do not introduce the reporter or channel by name.
           - Include a strong opening hook, clear explanation, and a short closing line.
           - Keep the narration tight; never stretch it just to fill time.
           - Do not invent facts, quotes, or breaking news.
@@ -479,6 +482,19 @@ jobs:
           data["title"] = (title_base + " " + suffix).strip()[:100]
           data["hashtags"] = tags
           data["description"] = str(data.get("description", "")).strip()
+
+          # Enforce the requested spoken opening and remove any channel-name self-introduction.
+          spoken = str(data.get("script", "")).strip()
+          spoken = re.sub(
+              r"^\s*(?:(?:नमस्कार|हेलो|हाय)\s+दोस्तों[,!।:—-]*\s*)+",
+              "", spoken, flags=re.IGNORECASE
+          )
+          spoken = re.sub(
+              r"^\s*(?:(?:Mr\.?\s*Ahlawat|मिस्टर\s+अहलावत|एमआर\s+अहलावत)"
+              r"[,!।:—-]*\s*)+",
+              "", spoken, flags=re.IGNORECASE
+          )
+          data["script"] = "हेलो दोस्तों, " + spoken.lstrip(" ,।!—-")
           if source_context:
               source_urls = []
               post_url = source_context.get("url", "")
@@ -1220,11 +1236,12 @@ jobs:
           key = os.environ.get("PIXABAY_API_KEY", "").strip()
           if not key:
               raise SystemExit("PIXABAY_API_KEY missing; SadTalker optional step skipped.")
+          # Prefer a clearly front-facing Indian male reporter portrait, not a side/profile view.
           queries = [
-              "male reporter microphone interview",
-              "Indian male journalist holding microphone",
-              "street interviewer microphone man",
-              "news reporter microphone"
+              "Indian male news reporter front facing portrait looking at camera microphone",
+              "Indian male journalist front view face camera press microphone",
+              "Indian man reporter facing camera portrait news microphone",
+              "Indian male news anchor straight on head and shoulders portrait"
           ]
           session = requests.Session()
           for q in queries:
@@ -1242,8 +1259,13 @@ jobs:
                       )):
                           print("SKIP_FEMALE_REPORTER_PORTRAIT:", tags[:160])
                           continue
+                      if any(word in tags for word in (
+                          "profile", "side view", "sideview", "looking away", "back view"
+                      )):
+                          print("SKIP_SIDE_FACING_REPORTER_PORTRAIT:", tags[:160])
+                          continue
                       if not any(word in tags for word in (
-                          "microphone", "reporter", "journalist", "interview", "news", "press"
+                          "microphone", "reporter", "journalist", "interview", "news", "press", "portrait"
                       )):
                           print("SKIP_NON_REPORTER_PORTRAIT:", tags[:160])
                           continue
