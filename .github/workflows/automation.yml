@@ -1046,9 +1046,12 @@ jobs:
 
                           meta = info.get("extmetadata", {})
                           artist = meta.get("Artist", {}).get("value", "Unknown")
-                          license_name = meta.get("LicenseShortName", {}).get("value", "Check license")                          source_page = "https://commons.wikimedia.org/wiki/" + quote(title.replace(" ", "_"))
-                          attribution.append(                              f"{title} | Creator: {artist} | "
-                              f"License: {license_name} | Source: {source_page}"                          )
+                          license_name = meta.get("LicenseShortName", {}).get("value", "Check license")
+                          source_page = "https://commons.wikimedia.org/wiki/" + quote(title.replace(" ", "_"))
+                          attribution.append(
+                              f"{title} | Creator: {artist} | "
+                              f"License: {license_name} | Source: {source_page}"
+                          )
                           print(f"Downloaded image {saved}: {title}")
                           break
 
