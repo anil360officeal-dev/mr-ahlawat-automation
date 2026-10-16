@@ -1574,7 +1574,7 @@ jobs:
 
           media_dir = "output/media"
           os.makedirs(media_dir, exist_ok=True)
-          output_path = os.path.join(media_dir, "reporter_intro.mp4")
+          output_path = os.path.join(media_dir, "reporter_stock_intro.mp4")
           topic = os.environ.get("SHORT_TOPIC", "").strip()
           pixabay_key = os.environ.get("PIXABAY_API_KEY", "").strip()
           pexels_key = os.environ.get("PEXELS_API_KEY", "").strip()
@@ -1611,7 +1611,7 @@ jobs:
                       "-an", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", output_path
                   ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=90)
                   if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
-                      with open(os.path.join(media_dir, "reporter_intro_source.txt"), "w", encoding="utf-8") as marker:
+                      with open(os.path.join(media_dir, "reporter_stock_intro_source.txt"), "w", encoding="utf-8") as marker:
                           marker.write(source_label + "\nReal moving reporter/interview footage with Hindi voice-over; not lip-synced and not proof of the specific event. Check source license before publication.\n")
                       print("REAL_VIDEO_INTRO_CREATED:", source_label)
                       return True
@@ -1855,7 +1855,8 @@ jobs:
             --result_dir "$GITHUB_WORKSPACE/output/sadtalker" \
             --preprocess crop \
             --size 256 \
-            --still \            --cpu
+            --still \
+            --cpu
           cd "$GITHUB_WORKSPACE"
 
           python - <<'PY'
@@ -1880,6 +1881,24 @@ jobs:
           with open("output/sadtalker_success.txt", "w", encoding="utf-8") as f:
               f.write(source + "\n")
           PY
+
+      - name: Use moving reporter fallback only if talking reporter failed
+        if: always() && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        run: |
+          set -e
+          if [ ! -s output/media/reporter_intro.mp4 ] && [ -s output/media/reporter_stock_intro.mp4 ]; then
+            cp output/media/reporter_stock_intro.mp4 output/media/reporter_intro.mp4
+            if [ -s output/media/reporter_stock_intro_source.txt ]; then
+              cp output/media/reporter_stock_intro_source.txt output/media/reporter_intro_source.txt
+            else
+              echo "Moving reporter footage fallback; not lip-synced. Check reuse license." > output/media/reporter_intro_source.txt
+            fi
+            echo "REPORTER_FALLBACK_USED: moving stock reporter footage with Hindi voice-over; no lip-sync claim."
+          elif [ -s output/media/reporter_intro.mp4 ]; then
+            echo "TALKING_REPORTER_OR_EXISTING_INTRO_READY"
+          else
+            echo "NO_REPORTER_VIDEO_AVAILABLE"
+          fi
 
       - name: Report talking-reporter generation status
         if: always() && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
@@ -1982,15 +2001,15 @@ jobs:
               groups.append(current)
 
           with open("output/captions.ass", "w", encoding="utf-8") as f:
-              f.write("[Script Info]\\n")
-              f.write("ScriptType: v4.00+\\n")
-              f.write("PlayResX: 1080\\nPlayResY: 1920\\n\\n")
-              f.write("[V4+ Styles]\\n")
-              f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\\n")
+              f.write("[Script Info]\n")
+              f.write("ScriptType: v4.00+\n")
+              f.write("PlayResX: 1080\nPlayResY: 1920\n\n")
+              f.write("[V4+ Styles]\n")
+              f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
               # Large bold white text with yellow word-by-word karaoke highlight and dark boxed backing.
-              f.write("Style: Default,Noto Sans Devanagari,62,&H0000D7FF,&H00FFFFFF,&H0010152B,&H90000000,-1,0,0,0,100,100,0,0,3,3,1,2,65,65,300,1\\n\\n")
-              f.write("[Events]\\n")
-              f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\\n")
+              f.write("Style: Default,Noto Sans Devanagari,62,&H0000D7FF,&H00FFFFFF,&H0010152B,&H90000000,-1,0,0,0,100,100,0,0,3,3,1,2,65,65,300,1\n\n")
+              f.write("[Events]\n")
+              f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
               for group in groups:
                   group_start = max(0.0, group[0]["start"])
                   group_end = min(duration, max(group[-1]["end"], group_start + 0.18))
@@ -2003,7 +2022,7 @@ jobs:
                       karaoke.append(f"{{\\kf{centiseconds}}}{ass_safe(word['text'])}")
                   f.write(
                       f"Dialogue: 0,{stamp(group_start)},{stamp(group_end)},Default,,0,0,0,,"
-                      + " ".join(karaoke) + "\\n"
+                      + " ".join(karaoke) + "\n"
                   )
 
           # Create topic-specific text assets for the newsroom layout.
