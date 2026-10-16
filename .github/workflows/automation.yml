@@ -973,12 +973,12 @@ jobs:
                               print(f"PUBLIC_SOCIAL_VIDEO_FRAME_SAVED: {prefix} image {social_image_count}")
                           elif os.path.exists(frame_path):
                               os.remove(frame_path)
-                      mp4_path = f"output/media/clip_{video_count + 1:02d}.mp4"
+                      mp4_path = f"output/media/social_clip_{video_count + 1:02d}.mp4"
                       converted = subprocess.run(["ffmpeg", "-y", "-i", source_path, "-t", "20", "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2", "-an", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", mp4_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
                       if converted.returncode == 0 and os.path.exists(mp4_path) and os.path.getsize(mp4_path) > 10000:
                           video_count += 1
                           attribution.append(f"Public social video (review usage rights before publishing) | Source post: {post_url}")
-                          print(f"PUBLIC_SOCIAL_VIDEO_DOWNLOADED: {prefix} clip {video_count}")
+                          print(f"PUBLIC_SOCIAL_VIDEO_DOWNLOADED_BUT_NOT_AUTO-USED: {prefix} clip {video_count}")
                       elif os.path.exists(mp4_path):
                           os.remove(mp4_path)
                   except subprocess.TimeoutExpired:
@@ -1161,11 +1161,20 @@ jobs:
                   hits = response.json().get("hits", [])
                   for hit in hits:
                       tags = str(hit.get("tags", "")).lower()
+                      if any(word in tags for word in (
+                          "woman", "women", "female", "girl", "blonde", "brunette",
+                          "lady", "actress", "beauty", "makeup"
+                      )):
+                          print("SKIP_FEMALE_OR_UNRELATED_REPORTER_VIDEO:", tags[:160])
+                          continue
                       if not any(word in tags for word in (
                           "reporter", "journalist", "interview", "microphone",
                           "selfie", "vlog", "news"
                       )):
                           print("SKIP_UNRELATED_REPORTER_VIDEO:", tags[:160])
+                          continue
+                      if not any(word in tags.split(",") for word in ("male", "man", "men", "gentleman", "boy")):
+                          print("SKIP_GENDER_UNCONFIRMED_REPORTER_VIDEO:", tags[:160])
                           continue
                       variants = hit.get("videos", {})
                       candidate = variants.get("medium") or variants.get("small") or variants.get("large")
@@ -1227,10 +1236,19 @@ jobs:
                   response.raise_for_status()
                   for hit in response.json().get("hits", []):
                       tags = str(hit.get("tags", "")).lower()
+                      if any(word in tags for word in (
+                          "woman", "women", "female", "girl", "blonde", "brunette",
+                          "lady", "actress", "beauty", "makeup"
+                      )):
+                          print("SKIP_FEMALE_REPORTER_PORTRAIT:", tags[:160])
+                          continue
                       if not any(word in tags for word in (
                           "microphone", "reporter", "journalist", "interview", "news", "press"
                       )):
                           print("SKIP_NON_REPORTER_PORTRAIT:", tags[:160])
+                          continue
+                      if not any(word in tags.split(",") for word in ("male", "man", "men", "gentleman", "boy")):
+                          print("SKIP_GENDER_UNCONFIRMED_REPORTER_PORTRAIT:", tags[:160])
                           continue
                       url = hit.get("largeImageURL") or hit.get("webformatURL")
                       if not url:
@@ -1303,7 +1321,7 @@ jobs:
           # Keep generated talking face silent here; production narration is muxed later.
           subprocess.run([
               "ffmpeg", "-y", "-i", source, "-an", "-t", "7.5",
-              "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p",
+              "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p,drawbox=x=470:y=1330:w=140:h=94:color=0x101010@0.92:t=fill,drawbox=x=530:y=1424:w=20:h=125:color=0x101010@0.92:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='CJP':fontcolor=white:fontsize=34:x=510:y=1360",
               "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", target
           ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
           if os.path.getsize(target) < 10000:
@@ -1406,11 +1424,12 @@ jobs:
           with open("output/ticker.txt", "w", encoding="utf-8") as f:
               f.write(("  •  BREAKING UPDATE  •  " + ticker + "  •  ")[:240])
 
+          # Never promote unreviewed social-post clips/thumbnails into the main video.
+          # Only topic-search B-roll (Pixabay/Commons) is eligible here.
           video_clips = sorted(glob.glob("output/media/clip_*.mp4"))[:2]
-          # Include stills extracted from public X/Facebook/Instagram posts too.
-          images = (sorted(glob.glob("output/media/image_*"))[:3] +
-                    sorted(glob.glob("output/media/social_image_*"))[:2])
-          images = images[:5]
+          # Keep topic-search photos only; unverified social thumbnails caused unrelated
+          # close-ups to become the main visual in earlier renders.
+          images = sorted(glob.glob("output/media/image_*"))[:5]
           reporter_path = "output/media/reporter_intro.mp4"
           assets = ([("reporter", reporter_path)] if os.path.exists(reporter_path) else [])
           assets += [("video", path) for path in video_clips] + [
