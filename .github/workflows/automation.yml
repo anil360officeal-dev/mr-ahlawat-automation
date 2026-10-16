@@ -725,6 +725,7 @@ jobs:
           SHORT_TOPIC: ${{ inputs.topic }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: |
           python - <<'PY'
           import os
@@ -1156,6 +1157,203 @@ jobs:
                       print("Public social thumbnail/video fetch timed out; skipping URL.")
                   except Exception as social_error:
                       print("Public social image/video fetch skipped:", social_error)
+          # Additional free-source APIs. YouTube is discovery-only: its API does not grant
+          # permission to download/reuse audiovisual files. Save licensed-source links for review.
+          import urllib.parse
+          source_links = []
+          for site, base in [
+              ("Mixkit (check Free License per clip)", "https://mixkit.co/free-stock-video/"),
+              ("Coverr (check item license)", "https://coverr.co/"),
+              ("Videvo (check individual license)", "https://www.videvo.net/"),
+              ("Dareful (check license)", "https://dareful.com/"),
+              ("Videezy (check attribution/license)", "https://www.videezy.com/"),
+              ("Vecteezy (check license)", "https://www.vecteezy.com/free-videos"),
+              ("Wikimedia Commons", "https://commons.wikimedia.org/"),
+              ("Internet Archive moving images", "https://archive.org/details/movies"),
+              ("NASA Image and Video Library", "https://images.nasa.gov/"),
+              ("DVIDS (verify item restrictions)", "https://www.dvidshub.net/"),
+              ("Facebook public videos (rights/permission required)", "https://www.facebook.com/"),
+              ("Instagram public Reels (rights/permission required)", "https://www.instagram.com/"),
+          ]:
+              source_links.append(f"{site}: {base}")
+          encoded_topic = urllib.parse.quote_plus(topic or title or "India news")
+          source_links.append(f"YouTube search (review license/ask creator; not auto-downloaded): https://www.youtube.com/results?search_query={encoded_topic}")
+          
+          # YouTube Data API: list only Creative Commons-labelled video links.
+          # The API terms prohibit downloading/storing audiovisual content via the API.
+          yt_key = os.environ.get("YOUTUBE_API_KEY", "").strip()
+          if yt_key:
+              try:
+                  yt_response = session.get(
+                      "https://www.googleapis.com/youtube/v3/search",
+                      params={
+                          "key": yt_key, "part": "snippet", "type": "video",
+                          "q": (topic or title or "India news")[:180],
+                          "maxResults": 8, "videoLicense": "creativeCommon",
+                          "regionCode": "IN", "relevanceLanguage": "hi"
+                      }, timeout=25
+                  )
+                  yt_response.raise_for_status()
+                  for item in yt_response.json().get("items", []):
+                      vid = item.get("id", {}).get("videoId")
+                      snip = item.get("snippet", {})
+                      if vid:
+                          source_links.append(
+                              "YouTube CC-labelled candidate (verify license and creator rights): "
+                                                       f"https://www.youtube.com/watch?v={vid} | "
+                              + str(snip.get("title", ""))[:180]
+                          )
+                  print("YOUTUBE_CC_LINKS_FOUND:", sum("youtube.com/watch?v=" in x for x in source_links))
+              except Exception as yt_error:
+                  print("YOUTUBE_API_DISCOVERY_WARNING:", repr(yt_error))
+          else:
+              print("YOUTUBE_API_KEY_NOT_SET: saved a direct YouTube search link; no video download attempted.")
+          
+          # NASA's official media API is keyless. Use only for non-public-affairs topics,
+          # because space footage is not a suitable visual for protest/court/politics stories.
+          if not is_protest_story and video_count < 2:
+              try:
+                  nasa_response = session.get(
+                      "https://images-api.nasa.gov/search",
+                      params={"q": (queries[0] if queries else topic)[:180],
+                              "media_type": "video", "page_size": 8},
+                      timeout=30
+                  )
+                  nasa_response.raise_for_status()
+                  nasa_items = nasa_response.json().get("collection", {}).get("items", [])
+                  for nasa_item in nasa_items:
+                      if video_count >= 2:
+                          break
+                      data = (nasa_item.get("data") or [{}])[0]
+                      nasa_id = data.get("nasa_id", "")
+                      nasa_title = data.get("title", "")
+                      if not nasa_id:
+                          continue
+                      # Require meaningful query/title overlap to avoid generic unrelated clips.
+                      query_words = {w.lower() for w in re.findall(r"[A-Za-z0-9]+", (queries[0] if queries else topic)) if len(w) > 3}
+                      title_words = {w.lower() for w in re.findall(r"[A-Za-z0-9]+", nasa_title) if len(w) > 3}
+                      if query_words and not (query_words & title_words):
+                          continue
+                      asset_response = session.get(
+                          f"https://images-api.nasa.gov/asset/{nasa_id}", timeout=25
+                      )
+                      asset_response.raise_for_status()
+                      asset_urls = asset_response.json().get("collection", {}).get("items", [])
+                      mp4_url = next((x.get("href") for x in asset_urls
+                                      if str(x.get("href", "")).lower().endswith(".mp4")), None)
+                      if not mp4_url:
+                          continue
+                      raw = session.get(mp4_url, timeout=90)
+                      raw.raise_for_status()
+                      if len(raw.content) < 20000 or len(raw.content) > 120_000_000:
+                          continue
+                      raw_path = "output/media/nasa_video_source.mp4"
+                      with open(raw_path, "wb") as out:
+                          out.write(raw.content)
+                      mp4_path = f"output/media/clip_{video_count + 1:02d}.mp4"
+                      converted = subprocess.run(
+                          ["ffmpeg", "-y", "-i", raw_path, "-t", "20",
+                           "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
+                           "-an", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", mp4_path],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+                      )
+                      os.remove(raw_path)
+                      if converted.returncode == 0 and os.path.exists(mp4_path) and os.path.getsize(mp4_path) > 10000:
+                          video_count += 1
+                          source_page = f"https://images.nasa.gov/details/{nasa_id}"
+                          attribution.append(f"NASA video | {nasa_title} | Review NASA media usage guidelines and third-party notices | Source: {source_page}")
+                          print("NASA_VIDEO_DOWNLOADED:", nasa_id, nasa_title[:120])
+              except Exception as nasa_error:
+                  print("NASA_VIDEO_SOURCE_WARNING:", repr(nasa_error))
+          
+          # Internet Archive advanced search: download only when the item metadata explicitly
+          # declares public-domain/CC0/Creative Commons terms; otherwise keep a review link.
+          if video_count < 2:
+              try:
+                  ia_query = (queries[0] if queries else topic or title).replace('"', " ")
+                  ia_response = session.get(
+                      "https://archive.org/advancedsearch.php",
+                      params={"q": f'mediatype:movies AND (title:({ia_query}) OR description:({ia_query}))',
+                              "fl[]": ["identifier", "title", "licenseurl", "rights", "description"],
+                              "rows": 10, "page": 1, "output": "json"},
+                      timeout=30
+                  )
+                  ia_response.raise_for_status()
+                  ia_docs = ia_response.json().get("response", {}).get("docs", [])
+                  for doc in ia_docs:
+                      if video_count >= 2:
+                          break
+                      ident = str(doc.get("identifier", "")).strip()
+                      if not ident:
+                          continue
+                      ia_url = f"https://archive.org/details/{ident}"
+                      source_links.append(f"Internet Archive candidate (check item rights): {ia_url} | {str(doc.get('title',''))[:150]}")
+                      rights_text = " ".join(str(doc.get(k, "")) for k in ("licenseurl", "rights")).lower()
+                      allowed_rights = any(term in rights_text for term in (
+                          "creativecommons.org/licenses/by/", "creativecommons.org/licenses/by-sa/",
+                          "creativecommons.org/publicdomain/zero", "creativecommons.org/publicdomain/mark",
+                          "public domain", "cc0", "creative commons attribution"
+                      ))
+                      if not allowed_rights:
+                          continue
+                      meta_response = session.get(f"https://archive.org/metadata/{ident}", timeout=25)
+                      meta_response.raise_for_status()
+                      files = meta_response.json().get("files", [])
+                      candidates = [f for f in files if str(f.get("name", "")).lower().endswith((".mp4", ".m4v", ".mov"))
+                                    and int(f.get("size", 0) or 0) < 120_000_000]
+                      if not candidates:
+                          continue
+                      file_meta = min(candidates, key=lambda f: int(f.get("size", 0) or 0))
+                      file_url = f"https://archive.org/download/{urllib.parse.quote(ident)}/{urllib.parse.quote(file_meta['name'])}"
+                      raw = session.get(file_url, timeout=90)
+                      raw.raise_for_status()
+                      if len(raw.content) < 20000:
+                          continue
+                      raw_path = "output/media/internet_archive_source.mp4"
+                      with open(raw_path, "wb") as out:
+                          out.write(raw.content)
+                      mp4_path = f"output/media/clip_{video_count + 1:02d}.mp4"
+                      converted = subprocess.run(
+                          ["ffmpeg", "-y", "-i", raw_path, "-t", "20",
+                           "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
+                           "-an", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", mp4_path],
+                          stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+                      )
+                      os.remove(raw_path)
+                      if converted.returncode == 0 and os.path.exists(mp4_path) and os.path.getsize(mp4_path) > 10000:
+                          video_count += 1
+                          attribution.append(f"Internet Archive video | {doc.get('title', ident)} | Rights metadata: {rights_text[:240]} | Source: {ia_url}")
+                          print("INTERNET_ARCHIVE_VIDEO_DOWNLOADED:", ident)
+              except Exception as ia_error:
+                  print("INTERNET_ARCHIVE_SOURCE_WARNING:", repr(ia_error))
+          
+          # Optional DVIDS API: only searches when the user adds a DVIDS_API_KEY secret.
+          # Candidate URLs are written for review; DVIDS item restrictions must be checked.
+          dvids_key = os.environ.get("DVIDS_API_KEY", "").strip()
+          if dvids_key:
+              try:
+                  dvids_response = session.get(
+                      "https://api.dvidshub.net/search",
+                      params={"type": "video", "q": (topic or title)[:150],
+                              "page": 1, "max_results": 8, "api_key": dvids_key},
+                      timeout=25
+                  )
+                  dvids_response.raise_for_status()
+                  dvids_data = dvids_response.json()
+                  for entry in (dvids_data.get("results") or dvids_data.get("data") or [])[:8]:
+                      link = entry.get("url") or entry.get("share_url") or entry.get("link")
+                      if link:
+                          source_links.append("DVIDS candidate (check item restrictions): " + str(link))
+                  print("DVIDS_CANDIDATES_FOUND:", len(source_links))
+              except Exception as dvids_error:
+                  print("DVIDS_API_DISCOVERY_WARNING:", repr(dvids_error))
+          else:
+              print("DVIDS_API_KEY_NOT_SET: source site link saved; optional API discovery skipped.")
+          
+          with open("output/video_source_links.txt", "w", encoding="utf-8") as f:
+              f.write("\n".join(source_links) + "\n")
+          print("VIDEO_SOURCE_LINKS_SAVED:", len(source_links))
+          
           # Free Wikimedia Commons moving-footage fallback; no API key required.
           # Use it for protest stories, while preserving creator/license attribution.
           if is_protest_story:
