@@ -1731,7 +1731,8 @@ jobs:
           PY
 
       - name: Generate optional talking reporter with SadTalker (CPU, free)
-        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false' && !hashFiles('output/media/reporter_intro.mp4')
+        # Prefer genuine moving on-location reporter footage when available; a still portrait animation is not a ground report.
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false' && !hashFiles('output/media/reporter_stock_intro.mp4') && !hashFiles('output/media/reporter_intro.mp4')
         continue-on-error: true
         timeout-minutes: 40
         env:
