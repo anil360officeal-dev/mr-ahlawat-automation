@@ -1643,6 +1643,9 @@ jobs:
                               continue
                           if not any(word in tags for word in role_terms):
                               continue
+                          if not any(word in tags for word in ("microphone", "mic")):
+                              print("SKIP_REPORTER_VIDEO_WITHOUT_MIC_TAG:", tags[:140])
+                              continue
                           variants = hit.get("videos", {})
                           candidate = variants.get("medium") or variants.get("small") or variants.get("large")
                           if not candidate or not candidate.get("url"):
@@ -1777,6 +1780,9 @@ jobs:
                           "microphone", "reporter", "journalist", "interview", "news", "press", "correspondent"
                       )):
                           print("SKIP_NON_REPORTER_PORTRAIT:", tags[:160])
+                          continue
+                      if not any(word in tags for word in ("microphone", "mic")):
+                          print("SKIP_REPORTER_PORTRAIT_WITHOUT_MIC_TAG:", tags[:160])
                           continue
                       has_india_context = any(word in tags for word in (
                           "india", "indian", "new delhi", "delhi"
