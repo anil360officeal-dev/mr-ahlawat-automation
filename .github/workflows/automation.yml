@@ -8,6 +8,11 @@ on:
         required: true
         default: "आज की ताज़ा वायरल खबर: CJP की नई जानकारी या BJP के खिलाफ बड़ा राष्ट्रीय मुद्दा"
         type: string
+      preview_only:
+        description: "Build and save MP4 artifact only; NEVER upload to YouTube"
+        required: true
+        default: true
+        type: boolean
   schedule:
     # India time (IST): 08:00, 14:00, 19:00 = 02:30, 08:30, 13:30 UTC
     - cron: "30 2,8,13 * * *"
@@ -37,6 +42,8 @@ jobs:
 
       - name: Check daily upload limit
         id: daily
+        env:
+          PREVIEW_ONLY: ${{ inputs.preview_only }}
         run: |
           python - <<'PY'
           import json, os
@@ -51,10 +58,11 @@ jobs:
           except (OSError, json.JSONDecodeError):
               state = {}
           count = int(state.get("count", 0)) if state.get("date") == today else 0
-          allowed = count < 3
+          preview_only = os.environ.get("PREVIEW_ONLY", "false").lower() == "true"
+          allowed = count < 3 or preview_only
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
               f.write("allowed=" + ("true" if allowed else "false") + chr(10))
-          print(f"IST_DATE={today}; successful_uploads_today={count}; allowed={allowed}")
+          print(f"IST_DATE={today}; successful_uploads_today={count}; preview_only={preview_only}; allowed={allowed}")
           if not allowed:
               print("DAILY_UPLOAD_LIMIT_REACHED: maximum 3 successful uploads per India calendar day.")
           PY
@@ -1338,7 +1346,7 @@ jobs:
           PY
 
       - name: Generate optional talking reporter with SadTalker (CPU, free)
-        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false' && !hashFiles('output/media/reporter_intro.mp4')
         continue-on-error: true
         timeout-minutes: 40
         env:
@@ -1793,7 +1801,7 @@ jobs:
           retention-days: 3
 
       - name: Upload video to YouTube
-        if: steps.quality.outputs.valid == 'true' && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        if: inputs.preview_only != true && steps.quality.outputs.valid == 'true' && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         id: upload
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
