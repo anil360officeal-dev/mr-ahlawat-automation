@@ -1334,21 +1334,19 @@ jobs:
               "cjp", "protest", "धरना", "प्रदर्शन", "आंदोलन", "bjp", "जंतर मंतर"
           ))
 
-          # Never use stock interview footage as if it were speaking the narration.
-          # Only create reporter_intro.mp4 from the optional SadTalker lip-sync step below.
-          print("STOCK_REPORTER_DISABLED: avoiding mismatched mouth movements and unrelated faces.")
-
+          # Option 6: use genuine moving reporter footage with the Hindi narration.
+          # Do not claim lip-sync; this is a real reporter clip plus voice-over.
           if not api_key:
-              print("STREET_REPORTER_INTRO_SKIPPED: Pixabay key unavailable; use topic visuals.")
+              print("STREET_REPORTER_INTRO_SKIPPED: Pixabay key unavailable.")
               raise SystemExit(0)
 
-          # Only accept clips that look like a person reporting/talking to camera.
-          # Protest crowd footage belongs in B-roll, not in the reporter slot.
+          # Search India-specific terms first. Only accept a male-presenting clip
+          # whose tags indicate journalism/interview/microphone, not random portraits.
           queries = [
-              "male reporter microphone interview",
-              "street interview handheld",
-              "man selfie vlog street",
-              "citizen journalist street",
+              "indian male reporter microphone",
+              "indian journalist interview",
+              "indian street reporter",
+              "india protest reporter microphone",
           ]
 
           session = requests.Session()
@@ -1377,9 +1375,13 @@ jobs:
                       )):
                           print("SKIP_UNRELATED_REPORTER_VIDEO:", tags[:160])
                           continue
-                      if not any(word in tags for word in (
+                      # Pixabay often omits nationality from tags even for India-specific
+                      # searches. Accept an India-specific query plus male tag, but still
+                      # reject clips that do not look like journalism/interview footage.
+                      has_india_context = any(word in tags for word in (
                           "india", "indian", "new delhi", "delhi"
-                      )):
+                      )) or query.lower().startswith(("indian ", "india "))
+                      if not has_india_context:
                           print("SKIP_NON_INDIAN_REPORTER_VIDEO:", tags[:160])
                           continue
                       if not any(word in tags.split(",") for word in ("male", "man", "men", "gentleman", "boy")):
@@ -1405,7 +1407,9 @@ jobs:
                       os.remove(temp)
                       if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
                           print("REAL_VIDEO_INTRO_CREATED_FROM_PIXABAY:", query, "ID:", hit.get("id", "unknown"))
-                          print("NOTE: stock intro is illustrative footage, not proof of the specific protest.")
+                          print("NOTE: real reporter footage with Hindi voice-over; not lip-synced and not proof of the specific protest.")
+                          with open("output/media/reporter_intro_source.txt", "w", encoding="utf-8") as marker:
+                              marker.write("Pixabay real reporter footage + Hindi voice-over; not lip-synced. Query: " + query + "\n")
                           raise SystemExit(0)
               except SystemExit:
                   raise
@@ -1747,9 +1751,12 @@ jobs:
               "जंतर मंतर", "प्रदर्शन", "धरना", "आंदोलन", "cjp",
               "ashu", "saurav", "abhijeet dipke", "gyanesh kumar"
           ))
-          video_clips = [] if public_affairs_story else sorted(glob.glob("output/media/clip_*.mp4"))[:2]
-          if public_affairs_story:
-              print("UNVERIFIED_PUBLIC_AFFAIRS_VIDEO_CLIPS_DISABLED: use vetted photos/news graphics instead.")
+          # These Pixabay clips were fetched using the story's India/protest-focused
+          # search terms above. Use them as illustrative moving B-roll, not as proof
+          # that the footage depicts the exact event.
+          video_clips = sorted(glob.glob("output/media/clip_*.mp4"))[:2]
+          if public_affairs_story and video_clips:
+              print("PUBLIC_AFFAIRS_BROLL_ENABLED_AS_ILLUSTRATIVE_FOOTAGE:", len(video_clips))
           # Keep topic-search photos only; unverified social thumbnails caused unrelated
           # close-ups to become the main visual in earlier renders.
           all_images = sorted(set(glob.glob("output/media/image_*") + glob.glob("output/media/india_gate_landmark.jpg")))
@@ -1925,11 +1932,12 @@ jobs:
           if not os.path.isfile(audio) or os.path.getsize(audio) < 10000:
               fail("Voice-over WAV is missing or suspiciously small.")
           if not os.path.isfile("output/sadtalker_success.txt"):
-              # Do not fake lip-sync with unrelated stock footage. A clean, branded
-              # newsroom-graphic version is still publishable if SadTalker cannot run.
-              if os.path.exists("output/media/reporter_intro.mp4"):
-                  fail("Reporter clip exists but has no verified SadTalker lip-sync marker.")
-              print("QUALITY_CHECK_NOTE: No AI lip-sync reporter; final is a branded newsroom visual package with the original narration.")
+              # Option 6 is explicitly real reporter footage + narration, not lip-sync.
+              # Never mark a photo-only/news-graphic fallback as a successful reporter video.
+              if os.path.isfile("output/media/reporter_intro.mp4") and os.path.isfile("output/media/reporter_intro_source.txt"):
+                  print("QUALITY_CHECK_NOTE: Real reporter footage with Hindi voice-over; lip-sync is not claimed.")
+              else:
+                  fail("No reporter video was generated. Refusing to label a photo-only fallback as a finished ground report.")
           if not os.path.isfile(captions):
               fail("Hindi captions file is missing.")
           if not os.path.isfile("output/headline_overlay.png") or os.path.getsize("output/headline_overlay.png") < 1000:
