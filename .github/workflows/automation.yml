@@ -1767,7 +1767,8 @@ jobs:
           uv pip install --python /tmp/sadtalker-venv/bin/python \
             "torch==1.12.1+cpu" "torchvision==0.13.1+cpu" \
             --extra-index-url https://download.pytorch.org/whl/cpu
-          grep -v -E '^[[:space:]]*gradio[[:space:]]*
+          grep -v -E '^[[:space:]]*(gradio|torch|torchvision)([[:space:]]|[<=>~!]|$)' /tmp/SadTalker/requirements.txt > /tmp/SadTalker/requirements-cpu.txt
+          uv pip install --python /tmp/sadtalker-venv/bin/python -r /tmp/SadTalker/requirements-cpu.txt
           # Download only the crop/256px checkpoints required for this run.
           # The upstream helper downloads both 256px and 512px models plus optional
           # face-enhancement weights, wasting time and disk on a CPU-only runner.
