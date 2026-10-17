@@ -4,10 +4,20 @@ on:
   workflow_dispatch:
     inputs:
       topic:
-        description: "Hindi Short ka topic"
+        description: "Shayari, comedy, ya news ka topic"
         required: true
-        default: "आज की ताज़ा वायरल खबर: CJP की नई जानकारी या BJP के खिलाफ बड़ा राष्ट्रीय मुद्दा"
+        default: "एक मजेदार हरियाणवी जोक और दिल से निकली छोटी शायरी"
         type: string
+      content_mode:
+        description: "Manual Short ka content style"
+        required: true
+        default: both
+        type: choice
+        options:
+          - both
+          - shayari
+          - comedy
+          - news
       preview_only:
         description: "Build and save MP4 artifact only; NEVER upload to YouTube"
         required: true
@@ -319,6 +329,7 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SHORT_TOPIC: ${{ steps.cjp.outputs.topic || inputs.topic }}
+          CONTENT_MODE: ${{ inputs.content_mode || 'news' }}
         run: |
           python - <<'PY'
           import os
@@ -327,6 +338,26 @@ jobs:
 
           api_key = os.environ.get("GEMINI_API_KEY", "").strip()
           topic = os.environ.get("SHORT_TOPIC", "").strip()
+          mode = os.environ.get("CONTENT_MODE", "news").strip().lower()
+          if mode not in {"news", "shayari", "comedy", "both"}:
+              mode = "news"
+          if mode == "shayari":
+              mode_guidance = """Content mode: SHAYARI. Create original, memorable Hindi/Hinglish shayari for a male Indian creator to perform to camera. Use emotional, rhythmic lines and natural pauses. Do not make news claims. Avoid copied famous couplets. Start with “हेलो दोस्तों,” then move directly into the shayari. Do not say the channel name aloud."""
+              verification_guidance = """For shayari mode, write original creative content only. Do not assert real-world news, quotes, or factual allegations."""
+              length_guidance = "Aim for 25–35 seconds of natural speech (about 55–80 Hindi words)."
+          elif mode == "comedy":
+              mode_guidance = """Content mode: COMEDY. Create an original, family-friendly Hindi/Haryanvi comedy bit for a male Indian creator. Use everyday colloquial phrasing, a clear setup and funny punchline. No targeted insults, copied viral jokes, or news claims. Start with “हेलो दोस्तों,” then go straight into the joke. Do not say the channel name aloud."""
+              verification_guidance = """For comedy mode, write original, harmless creative content only. Do not assert real-world news, quotes, or factual allegations."""
+              length_guidance = "Aim for 25–35 seconds of natural speech (about 55–80 Hindi words)."
+          elif mode == "both":
+              mode_guidance = """Content mode: SHAYARI + COMEDY. Create one short, original Hindi/Haryanvi performance for a male Indian creator: open with a relatable light joke, then end with a memorable shayrana couplet or witty poetic twist. Keep it family-friendly, expressive and natural. Avoid copied famous lines and news claims. Start with “हेलो दोस्तों,” and do not say the channel name aloud."""
+              verification_guidance = """For mixed shayari/comedy mode, write original creative content only. Do not assert real-world news, quotes, or factual allegations."""
+              length_guidance = "Aim for 30–40 seconds of natural speech (about 65–90 Hindi words)."
+          else:
+              mode_guidance = """Content mode: CURRENT-AFFAIRS NEWS. Prioritize a verified Hindi news explainer. If the topic/source is about CJP, cover relevant CJP updates without requiring an anti-BJP angle; otherwise use a major public-interest issue. For manual runs, do not pretend to know today's latest news unless supported. Start with “हेलो दोस्तों,” and do not say the channel name aloud. Deliver in a graceful, credible field-reporter style."""
+              verification_guidance = """Treat any supplied social post as a lead, not proof. Only state claims supported by corroborating sources. Omit unsupported claims or label them unconfirmed. Do not invent quotes, dates, arrests, motives, identities, or event details. If evidence is weak or contradictory, say what remains unverified. Include available source links in the description."""
+              length_guidance = "Script should be around 40–48 seconds when spoken (roughly 95–110 Hindi words), with a brisk pace and no padding."
+
           source_context = {}
           if os.path.exists("output/cjp_source.json"):
               with open("output/cjp_source.json", encoding="utf-8") as source_file:
@@ -341,36 +372,26 @@ jobs:
 
           Topic: {topic}
 
-          Editorial focus for Mr Ahlawat:
-          - This is a current-affairs/news channel, not a technology explainer channel.
-          - If the topic/source is about CJP, cover any relevant update or information about CJP, without requiring it to be anti-BJP.
-          - Otherwise prioritize a genuinely newsworthy viral story critical of BJP/the BJP-led government, including major controversies, protests, court/election developments, public-policy failures, inflation, unemployment, farmers, women's safety, corruption allegations, or other major public-interest issues.
-          - For manual runs where no source is supplied, do not pretend to know today's latest news. Ask the model to produce a factual, cautious news explainer only if it can support the topic; never invent a current event. Scheduled runs must be grounded in the selected post and corroborating coverage.
-          - The spoken script MUST begin exactly with “हेलो दोस्तों,” so the reporter greets viewers directly before the news.
-          - Delivery style: a graceful, shayrana Hindi news narration—not flat reading. Use rhythmic short sentences, expressive pauses marked by commas/ellipses, and one memorable couplet-like line near the opening or close that fits the verified story. Keep every factual claim accurate; do not invent details, quotes, or rhymes that change the meaning.
-          - Keep it conversational and clear for a Hindi female presenter voice; avoid overdramatic claims, fake quotes, and unsupported allegations.
+          {mode_guidance}
           - Do NOT say “Mr Ahlawat”, “मिस्टर अहलावत”, “मैं Mr Ahlawat”, or any channel-name self-introduction anywhere in the spoken script. The channel name may appear only as on-screen branding.
-          - Make the opening sound like a concise Hindi ground reporter speaking directly to a phone camera on the street. Give the key fact, why it matters, and what is confirmed versus alleged. Avoid generic filler.
+          - Speak directly to the viewer in natural, expressive Hindi/Haryanvi; avoid robotic delivery and generic filler.
 
           X source post and independent corroborating coverage (empty for manual topic runs):
           {json.dumps(source_context, ensure_ascii=False)}
 
           Verification rules:
-          - Treat the X post as a lead, not as proof. Only state factual claims supported by the corroborating articles above.
-          - If the post makes claims not supported by those articles, omit them or clearly attribute them as unconfirmed claims in the post.
-          - Do not invent quotes, dates, arrests, motives, identities, or event details. Include the source post/article links in the description.
-          - If corroborating evidence is weak or contradictory, produce a cautious update and say what remains unverified.
+          {verification_guidance}
 
           Rules:
           - Write like a real Indian TV field reporter speaking naturally to one viewer, not like a formal TV studio anchor, formal article, or AI announcement.
           - Use natural spoken Devanagari Hindi with everyday Indian phrasing and smooth word connections.
           - Avoid writing Hindi words in Roman letters. Keep only unavoidable names and technical terms in English; write common terms in Hindi phonetics when that improves pronunciation.
-          - Sound like an confident Indian street reporter or protest ground reporter speaking naturally to a phone camera with natural human conversational flow, varied emphasis, and decisive sentence endings. Avoid a sleepy, flat, breathless, or robotic delivery. Keep it credible, not theatrical.
+          - Sound like a confident Indian male creator speaking naturally to a phone camera with human conversational flow, varied emphasis, and decisive sentence endings. Avoid sleepy, flat, breathless, or robotic delivery.
           - Vary sentence length and rhythm naturally; use commas and full stops for short, purposeful pauses. Prefer active voice and punchy spoken sentences.
           - Use emphasis only on the most important facts. Keep transitions conversational and the ending crisp, not theatrical.
           - Prefer easy-to-pronounce words and clean sentence structure; avoid tongue-twisters, stacked English terms, repeated filler, and generic AI phrases.
           - Never shout, over-dramatize, sensationalize, invent facts, or claim unverified breaking news.
-          - Script should be around 40–48 seconds when spoken (roughly 95–110 Hindi words), with a brisk pace and no padding.
+          - {length_guidance}
           - Begin with the exact greeting “हेलो दोस्तों,” then move immediately into the news hook; do not introduce the reporter or channel by name.
           - Include a strong opening hook, clear explanation, and a short closing line.
           - Keep the narration tight; never stretch it just to fill time.
@@ -526,85 +547,49 @@ jobs:
           print("Generated script:", data["script"])
           PY
 
-      - name: Generate Hindi female voice-over
+      - name: Generate Hindi male voice-over
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
           set -e
           mkdir -p models output
-
           python - <<'PY'
-          import asyncio
-          import json
-          import os
-          import subprocess
-
+          import json, os, subprocess
           with open("output/metadata.json", encoding="utf-8") as f:
-              data = json.load(f)
-
-          script = data["script"].strip()
+              script = json.load(f)["script"].strip()
           if not script:
               raise RuntimeError("AI script is empty")
-
-          # Offline-first Hindi female voice: Piper Priyamvada is free and avoids Edge-TTS network/403 failures.
-          # Edge TTS Swara is only a fallback. Never silently switch to a male voice for the female presenter.
           source_audio = None
-          BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/priyamvada/medium"
+          base = "https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/rohan/medium"
           try:
-              subprocess.run(["curl", "-fL", "--retry", "3", BASE + "/hi_IN-priyamvada-medium.onnx", "-o", "models/hi_IN-priyamvada-medium.onnx"], check=True)
-              subprocess.run(["curl", "-fL", "--retry", "3", BASE + "/hi_IN-priyamvada-medium.onnx.json", "-o", "models/hi_IN-priyamvada-medium.onnx.json"], check=True)
-              subprocess.run(["piper", "--model", "models/hi_IN-priyamvada-medium.onnx", "--length_scale", "0.96", "--noise_scale", "0.45", "--noise_w_scale", "0.65", "--sentence_silence", "0.28", "--output_file", "output/voiceover-priyamvada.wav"], input=script, text=True, check=True)
-              if os.path.getsize("output/voiceover-priyamvada.wav") < 1000:
-                  raise RuntimeError("Piper Priyamvada output is too small")
-              source_audio = "output/voiceover-priyamvada.wav"
-              print("VOICE_ENGINE=free-offline-piper-hi_IN-priyamvada-female")
-          except Exception as piper_female_error:
-              print("Piper female voice unavailable; trying free Hindi female neural fallback:", repr(piper_female_error))
+              subprocess.run(["curl", "-fL", "--retry", "3", base + "/hi_IN-rohan-medium.onnx", "-o", "models/hi_IN-rohan-medium.onnx"], check=True)
+              subprocess.run(["curl", "-fL", "--retry", "3", base + "/hi_IN-rohan-medium.onnx.json", "-o", "models/hi_IN-rohan-medium.onnx.json"], check=True)
+              subprocess.run(["piper", "--model", "models/hi_IN-rohan-medium.onnx", "--length_scale", "0.96", "--noise_scale", "0.45", "--noise_w_scale", "0.65", "--sentence_silence", "0.28", "--output_file", "output/voiceover-rohan.wav"], input=script, text=True, check=True)
+              if os.path.getsize("output/voiceover-rohan.wav") < 1000:
+                  raise RuntimeError("Piper Rohan output is too small")
+              source_audio = "output/voiceover-rohan.wav"
+              print("VOICE_ENGINE=free-offline-piper-hi_IN-rohan-male")
+          except Exception as piper_error:
+              print("Piper Rohan unavailable; trying free Hindi male neural fallback:", repr(piper_error))
               try:
-                  import edge_tts
-                  async def make_female_voice():
-                      communicate = edge_tts.Communicate(script, "hi-IN-SwaraNeural", rate="-5%", pitch="+1Hz")
-                      await communicate.save("output/voiceover-swara.mp3")
-                  asyncio.run(make_female_voice())
-                  if os.path.getsize("output/voiceover-swara.mp3") > 1000:
-                      source_audio = "output/voiceover-swara.mp3"
-                      print("VOICE_ENGINE=fallback-edge-tts-hi-IN-SwaraNeural-female")
-              except Exception as female_error:
-                  print("Hindi female neural fallback unavailable:", repr(female_error))
-
+                  import asyncio, edge_tts
+                  async def make_male_voice():
+                      await edge_tts.Communicate(script, "hi-IN-KunalNeural", rate="-3%", pitch="-2Hz").save("output/voiceover-kunal.mp3")
+                  asyncio.run(make_male_voice())
+                  if os.path.getsize("output/voiceover-kunal.mp3") > 1000:
+                      source_audio = "output/voiceover-kunal.mp3"
+                      print("VOICE_ENGINE=fallback-edge-tts-hi-IN-KunalNeural-male")
+              except Exception as edge_error:
+                  print("Hindi male neural fallback unavailable:", repr(edge_error))
           if source_audio is None:
-              raise RuntimeError("No female Hindi voice could be generated; refusing to fall back to a male voice.")
-
-          subprocess.run(
-              [
-                  "ffmpeg", "-y",
-                  "-i", source_audio,
-                  "-af", "highpass=f=80,lowpass=f=11500,equalizer=f=180:t=q:w=1:g=1.0,equalizer=f=2500:t=q:w=1:g=1.6,acompressor=threshold=-20dB:ratio=2.2:attack=15:release=140,loudnorm=I=-16:TP=-1.5:LRA=10",
-                  "-b:a", "192k",
-                  "output/voiceover.mp3"
-              ],
-              check=True
-          )
-
+              raise RuntimeError("No Hindi male voice could be generated.")
+          subprocess.run(["ffmpeg", "-y", "-i", source_audio, "-af", "highpass=f=80,lowpass=f=11500,equalizer=f=180:t=q:w=1:g=1.0,equalizer=f=2500:t=q:w=1:g=1.6,acompressor=threshold=-20dB:ratio=2.2:attack=15:release=140,loudnorm=I=-16:TP=-1.5:LRA=10", "-b:a", "192k", "output/voiceover.mp3"], check=True)
           if os.path.getsize("output/voiceover.mp3") < 1000:
               raise RuntimeError("Voice-over file is too small")
-
-          # Caption timing depends on this normalized compatibility WAV.
-          subprocess.run(
-              [
-                  "ffmpeg", "-y",
-                  "-i", "output/voiceover.mp3",
-                  "-ar", "24000",
-                  "-ac", "1",
-                  "output/voiceover.wav"
-              ],
-              check=True
-          )
+          subprocess.run(["ffmpeg", "-y", "-i", "output/voiceover.mp3", "-ar", "24000", "-ac", "1", "output/voiceover.wav"], check=True)
           if not os.path.exists("output/voiceover.wav") or os.path.getsize("output/voiceover.wav") < 1000:
               raise RuntimeError("Compatibility WAV for caption timing was not created")
-
-          print("HINDI_VOICE_SUCCESS")
+          print("HINDI_MALE_VOICE_SUCCESS")
           PY
-    
 
       - name: Generate free Hindi voice comparison samples
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
@@ -613,7 +598,7 @@ jobs:
           set -e
           mkdir -p models output
 
-          # Preserve production voice. This file is the current female presenter sample (Piper Priyamvada or Swara fallback).
+          # Preserve the production male voice sample (Piper Rohan or Kunal fallback).
           cp output/voiceover.mp3 output/voice-test-production.mp3
 
           # Optional comparison samples only; they never replace the female production narration.
@@ -1535,7 +1520,7 @@ jobs:
           PY
 
       - name: Find free street-reporter video intro (disabled for AI presenter mode)
-        if: false # AI female presenter mode: no live-location or stock reporter footage
+        if: false # AI avatar mode: no live-location or stock reporter footage
         env:
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
@@ -1704,58 +1689,66 @@ jobs:
               print("STREET_REPORTER_INTRO_NOT_FOUND: no suitable moving reporter clip found; do not substitute still photos.")
           PY
 
-      - name: Generate optional talking reporter with SadTalker (CPU, free)
+      - name: Generate free talking Indian male avatar with SadTalker (CPU)
         # Prefer genuine moving on-location reporter footage when available; a still portrait animation is not a ground report.
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         continue-on-error: true
         timeout-minutes: 40
-        env:
-          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         run: |
           set -e
           mkdir -p output/media output/sadtalker_source
           python - <<'PY'
-          import os, requests
-          key = os.environ.get("PIXABAY_API_KEY", "").strip()
-          if not key:
-              raise SystemExit("PIXABAY_API_KEY missing; free SadTalker avatar step skipped.")
-          queries = ["indian female news anchor front facing", "indian woman presenter front view", "professional indian woman portrait", "indian female journalist camera facing", "indian female presenter microphone"]
-          female_terms = ("woman", "women", "female", "girl", "lady", "actress")
-          male_terms = ("male", "man", "men", "gentleman", "boy")
-          role_terms = ("presenter", "anchor", "reporter", "journalist", "news", "press", "microphone", "interview")
-          reject_terms = ("profile", "side view", "sideview", "looking away", "back view", "silhouette", "faceless", "mask", "statue", "mannequin", "fashion", "glamour", "costume", "cartoon", "illustration")
+          import io, re, requests
+          from PIL import Image
           session = requests.Session()
-          for q in queries:
+          session.headers.update({"User-Agent": "MrAhlawatShortsAutomation/1.0 (open-source avatar portrait search)"})
+          queries = ['Indian male portrait photograph', 'Indian man headshot photograph', 'Indian male journalist portrait', 'Indian man looking at camera portrait']
+          rejected = ("painting", "drawing", "illustration", "sculpture", "statue", "cartoon", "logo", "poster", "silhouette", "back view")
+          candidates, seen = [], set()
+          for query in queries:
               try:
-                  response = session.get("https://pixabay.com/api/", params={"key": key, "q": q, "image_type": "photo", "orientation": "vertical", "safesearch": "true", "per_page": 20}, timeout=25)
+                  response = session.get("https://commons.wikimedia.org/w/api.php", params={
+                      "action": "query", "generator": "search", "gsrsearch": query,
+                      "gsrnamespace": 6, "gsrlimit": 15, "prop": "imageinfo",
+                      "iiprop": "url|extmetadata", "iiurlwidth": 900, "format": "json"
+                  }, timeout=30)
                   response.raise_for_status()
-                  for hit in response.json().get("hits", []):
-                      tags = str(hit.get("tags", "")).lower()
-                      tag_set = {t.strip() for t in tags.split(",")}
-                      if any(word in tags for word in reject_terms) or any(word in tag_set for word in male_terms):
+                  for page in response.json().get("query", {}).get("pages", {}).values():
+                      title = str(page.get("title", ""))
+                      low = title.lower()
+                      if title in seen or any(term in low for term in rejected):
                           continue
-                      has_female_tag = any(word in tags for word in female_terms)
-                      has_role_tag = any(word in tags for word in role_terms)
-                      has_india_tag = any(word in tags for word in ("india", "indian", "delhi"))
-                      if not (has_female_tag and (has_role_tag or has_india_tag)):
-                          print("SKIP_UNVERIFIED_FEMALE_PRESENTER_PORTRAIT:", tags[:140])
+                      if not re.search(r"indian|india|portrait|man|male|journal|reporter|anchor|headshot", low):
                           continue
-                      url = hit.get("largeImageURL") or hit.get("webformatURL")
-                      if not url:
-                          continue
-                      image = session.get(url, timeout=40)
-                      image.raise_for_status()
-                      if len(image.content) < 10000:
-                          continue
-                      with open("output/sadtalker_source/reporter.jpg", "wb") as out:
-                          out.write(image.content)
-                      print("SADTALKER_FEMALE_PRESENTER_SOURCE_READY:", q, "ID:", hit.get("id", "unknown"))
-                      raise SystemExit(0)
-              except SystemExit:
-                  raise
+                      infos = page.get("imageinfo", [])
+                      if not infos: continue
+                      info = infos[0]
+                      url = info.get("thumburl") or info.get("url")
+                      if url:
+                          ext = info.get("extmetadata", {})
+                          license_name = str(ext.get("LicenseShortName", {}).get("value", "license metadata unavailable"))
+                          artist = re.sub("<[^>]+>", "", str(ext.get("Artist", {}).get("value", "unknown creator")))
+                          candidates.append((title, url, license_name, artist, query))
+                          seen.add(title)
               except Exception as e:
-                  print("Female presenter source search warning:", q, repr(e))
-          raise SystemExit("No suitable female presenter portrait found; preview will not pretend a talking avatar was generated.")
+                  print("COMMONS_MALE_PORTRAIT_SEARCH_WARNING:", query, repr(e))
+          candidates.sort(key=lambda x: (0 if "indian" in x[0].lower() else 1, 0 if "portrait" in x[0].lower() or "headshot" in x[0].lower() else 1, 0 if any(t in x[0].lower() for t in ("journalist", "reporter", "anchor")) else 1))
+          for title, url, license_name, artist, query in candidates:
+              try:
+                  image_response = session.get(url, timeout=40)
+                  image_response.raise_for_status()
+                  if len(image_response.content) < 10000: continue
+                  image = Image.open(io.BytesIO(image_response.content)).convert("RGB")
+                  if image.width < 250 or image.height < 250: continue
+                  image.save("output/sadtalker_source/reporter.jpg", "JPEG", quality=92)
+                  with open("output/sadtalker_source/portrait_attribution.txt", "w", encoding="utf-8") as f:
+                      f.write(f"Source: Wikimedia Commons | File: {title} | Creator: {artist} | License: {license_name} | Search: {query}\n")
+                  print("SADTALKER_MALE_PORTRAIT_SOURCE_READY:", title, "|", license_name)
+                  raise SystemExit(0)
+              except SystemExit: raise
+              except Exception as e:
+                  print("COMMONS_MALE_PORTRAIT_DOWNLOAD_WARNING:", title, repr(e))
+          raise SystemExit("No usable male portrait found on Wikimedia Commons; no fake avatar preview will be created.")
           PY
 
           # SadTalker needs an older Python stack; isolate it so the working
@@ -1816,24 +1809,24 @@ jobs:
               f.write(source + "\n")
           PY
 
-      - name: Enforce AI female presenter only (no stock/live-location fallback)
+      - name: Enforce AI male avatar only (no stock/live-location fallback)
         if: always() && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
           set -e
           if [ -s output/sadtalker_success.txt ] && [ -s output/media/reporter_intro.mp4 ]; then
-            echo "AI_FEMALE_PRESENTER_READY: generated talking portrait with Hindi female narration."
+            echo "AI_MALE_AVATAR_READY: generated talking portrait with Hindi male narration."
           else
             rm -f output/media/reporter_intro.mp4 output/media/reporter_intro_source.txt
-            echo "AI_FEMALE_PRESENTER_NOT_READY: stock/live footage fallback disabled by user request."
+            echo "AI_MALE_AVATAR_NOT_READY: stock/live footage fallback disabled by user request."
           fi
 
       - name: Report talking-reporter generation status
         if: always() && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
           if [ -s output/sadtalker_success.txt ]; then
-            echo "SADTALKER_VERIFIED_OUTPUT: $(cat output/sadtalker_success.txt)"
+            echo "SADTALKER_VERIFIED_MALE_AVATAR_OUTPUT: $(cat output/sadtalker_success.txt)"
           else
-            echo "SADTALKER_NOT_GENERATED: no verified talking reporter; quality gate will block upload."
+            echo "SADTALKER_NOT_GENERATED: no verified male talking avatar; quality gate will block upload."
           fi
 
       - name: Create Ground Report video with Hindi captions
@@ -2030,7 +2023,7 @@ jobs:
           images = cjp_images + other_images[:4]
           reporter_path = "output/media/reporter_intro.mp4"
           # Always keep relevant pictures and moving B-roll as the full-screen background.
-          # The real AI female presenter is layered on top only after SadTalker succeeds.
+          # The real AI male avatar is layered on top only after SadTalker succeeds.
           assets = [("logo", path) for path in cjp_images]
           assets += [("video", path) for path in video_clips] + [
               ("image", path) for path in other_images[:4]
@@ -2153,7 +2146,7 @@ jobs:
               -filter_complex "[0:v]drawbox=x=0:y=0:w=1080:h=112:color=0x071426@0.80:t=fill,drawbox=x=0:y=108:w=14:h=112:color=0xE53935:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=42:x=42:y=27:shadowcolor=black:shadowx=2:shadowy=2,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GROUND REPORT':fontcolor=0x00D9FF:fontsize=25:x=42:y=76[base];[base][2:v]overlay=x=0:y=120:format=auto[head];[3:v]scale=480:854:force_original_aspect_ratio=increase,crop=480:854,setsar=1[avatar];[head][avatar]overlay=x=600:y=360:shortest=1[withavatar];[withavatar]subtitles=filename=output/captions.ass[v]" \
               -map "[v]" -map 1:a:0 -c:v libx264 -preset veryfast -pix_fmt yuv420p -c:a aac -b:a 128k -tune stillimage -shortest output/mr-ahlawat-short.mp4
           else
-            echo "ERROR: AI female presenter missing; do not render fake presenter preview."
+            echo "ERROR: AI male avatar missing; do not render fake avatar preview."
             exit 1
           fi
 
@@ -2184,7 +2177,7 @@ jobs:
           if not os.path.isfile(audio) or os.path.getsize(audio) < 10000:
               fail("Voice-over WAV is missing or suspiciously small.")
           if not os.path.isfile("output/sadtalker_success.txt") or not os.path.isfile("output/media/reporter_intro.mp4"):
-              fail("AI female talking presenter was not generated. Stock/live-location fallback is disabled; preview must not pretend lip-sync succeeded.")
+              fail("AI male talking avatar was not generated. Stock/live-location fallback is disabled; preview must not pretend lip-sync succeeded.")
           if not os.path.isfile(captions):
               fail("Hindi captions file is missing.")
           if not os.path.isfile("output/headline_overlay.png") or os.path.getsize("output/headline_overlay.png") < 1000:
