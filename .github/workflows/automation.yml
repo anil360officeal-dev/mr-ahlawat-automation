@@ -2148,21 +2148,17 @@ jobs:
           print(f"VOICEOVER_DURATION: {duration:.2f} seconds")
           PY
 
-          ffmpeg -y \
-            -i output/visuals.mp4 \
-            -i output/voiceover.mp3 \
-            -loop 1 -framerate 30 -i output/headline_overlay.png \
-            -filter_complex "[0:v]drawbox=x=0:y=0:w=1080:h=112:color=0x071426@0.80:t=fill,drawbox=x=0:y=108:w=14:h=112:color=0xE53935:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=42:x=42:y=27:shadowcolor=black:shadowx=2:shadowy=2,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GROUND REPORT':fontcolor=0x00D9FF:fontsize=25:x=42:y=76[base];[base][2:v]overlay=x=0:y=120:format=auto,subtitles=filename=output/captions.ass[v]" \
-            -map "[v]" \
-            -map 1:a:0 \
-            -c:v libx264 \
-            -preset veryfast \
-            -pix_fmt yuv420p \
-            -c:a aac \
-            -b:a 128k \
-            -tune stillimage \
-            -shortest \
-            output/mr-ahlawat-short.mp4
+          if [ -s output/sadtalker_success.txt ] && [ -s output/media/reporter_intro.mp4 ]; then
+            ffmpeg -y \
+              -i output/visuals.mp4 -i output/voiceover.mp3 \
+              -loop 1 -framerate 30 -i output/headline_overlay.png \
+              -stream_loop -1 -i output/media/reporter_intro.mp4 \
+              -filter_complex "[0:v]drawbox=x=0:y=0:w=1080:h=112:color=0x071426@0.80:t=fill,drawbox=x=0:y=108:w=14:h=112:color=0xE53935:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=42:x=42:y=27:shadowcolor=black:shadowx=2:shadowy=2,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GROUND REPORT':fontcolor=0x00D9FF:fontsize=25:x=42:y=76[base];[base][2:v]overlay=x=0:y=120:format=auto[head];[3:v]scale=480:854:force_original_aspect_ratio=increase,crop=480:854,setsar=1[avatar];[head][avatar]overlay=x=600:y=360:shortest=1[withavatar];[withavatar]subtitles=filename=output/captions.ass[v]" \
+              -map "[v]" -map 1:a:0 -c:v libx264 -preset veryfast -pix_fmt yuv420p -c:a aac -b:a 128k -tune stillimage -shortest output/mr-ahlawat-short.mp4
+          else
+            echo "ERROR: AI female presenter missing; do not render fake presenter preview."
+            exit 1
+          fi
 
       - name: Validate rendered Short before upload
         id: quality
