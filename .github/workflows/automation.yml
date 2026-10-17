@@ -347,6 +347,8 @@ jobs:
           - Otherwise prioritize a genuinely newsworthy viral story critical of BJP/the BJP-led government, including major controversies, protests, court/election developments, public-policy failures, inflation, unemployment, farmers, women's safety, corruption allegations, or other major public-interest issues.
           - For manual runs where no source is supplied, do not pretend to know today's latest news. Ask the model to produce a factual, cautious news explainer only if it can support the topic; never invent a current event. Scheduled runs must be grounded in the selected post and corroborating coverage.
           - The spoken script MUST begin exactly with “हेलो दोस्तों,” so the reporter greets viewers directly before the news.
+          - Delivery style: poetic, melodic, expressive Hindi with natural pauses and a memorable line; use light shayari only where it fits the facts, never invent facts for rhyme.
+          - Keep it conversational and clear for a Hindi female presenter voice; avoid overdramatic claims, fake quotes, and unsupported allegations.
           - Do NOT say “Mr Ahlawat”, “मिस्टर अहलावत”, “मैं Mr Ahlawat”, or any channel-name self-introduction anywhere in the spoken script. The channel name may appear only as on-screen branding.
           - Make the opening sound like a concise Hindi ground reporter speaking directly to a phone camera on the street. Give the key fact, why it matters, and what is confirmed versus alleged. Avoid generic filler.
 
@@ -543,59 +545,43 @@ jobs:
           if not script:
               raise RuntimeError("AI script is empty")
 
-          # Piper Pratham is the DEFAULT production voice, using the tuned sample settings.
-          # If the offline voice/model cannot be generated, fall back to Microsoft Hindi neural.
+          # Prefer a free Hindi female neural voice for the AI female presenter.
+          # Preserve the known-working Piper Hindi voice as the first fallback, then existing neural fallback.
           source_audio = None
-          BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/pratham/medium"
           try:
-              subprocess.run(
-                  ["curl", "-fL", "--retry", "3", BASE + "/hi_IN-pratham-medium.onnx",
-                   "-o", "models/hi_IN-pratham-medium.onnx"],
-                  check=True
-              )
-              subprocess.run(
-                  ["curl", "-fL", "--retry", "3", BASE + "/hi_IN-pratham-medium.onnx.json",
-                   "-o", "models/hi_IN-pratham-medium.onnx.json"],
-                  check=True
-              )
-              subprocess.run(
-                  [
-                      "piper",
-                      "--model", "models/hi_IN-pratham-medium.onnx",
-                      "--length_scale", "0.90",
-                      "--noise_scale", "0.45",
-                      "--noise_w_scale", "0.65",
-                      "--sentence_silence", "0.18",
-                      "--output_file", "output/voiceover-pratham.wav"
-                  ],
-                  input=script,
-                  text=True,
-                  check=True
-              )
-              if os.path.getsize("output/voiceover-pratham.wav") < 1000:
-                  raise RuntimeError("Piper Pratham output is too small")
-              source_audio = "output/voiceover-pratham.wav"
-              print("VOICE_ENGINE=default-piper-hi_IN-pratham-medium")
-          except Exception as e:
-              print("Piper Pratham unavailable; trying Hindi neural fallback:", repr(e))
+              import edge_tts
+              async def make_female_voice():
+                  communicate = edge_tts.Communicate(script, "hi-IN-SwaraNeural", rate="-5%", pitch="+1Hz")
+                  await communicate.save("output/voiceover-swara.mp3")
+              asyncio.run(make_female_voice())
+              if os.path.getsize("output/voiceover-swara.mp3") < 1000:
+                  raise RuntimeError("Hindi female voice output is too small")
+              source_audio = "output/voiceover-swara.mp3"
+              print("VOICE_ENGINE=free-edge-tts-hi-IN-SwaraNeural-female")
+          except Exception as female_error:
+              print("Hindi female neural voice unavailable; preserving Piper fallback:", repr(female_error))
+          if source_audio is None:
+              BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/pratham/medium"
               try:
-                  import edge_tts
-
-                  async def make_neural_voice():
-                      communicate = edge_tts.Communicate(
-                          script,
-                          "hi-IN-MadhurNeural",
-                          rate="+2%",
-                          pitch="-2Hz"
-                      )
-                      await communicate.save("output/voiceover-edge.mp3")
-
-                  asyncio.run(make_neural_voice())
-                  if os.path.getsize("output/voiceover-edge.mp3") > 1000:
-                      source_audio = "output/voiceover-edge.mp3"
-                      print("VOICE_ENGINE=fallback-edge-tts-hi-IN-MadhurNeural")
-              except Exception as fallback_error:
-                  print("Hindi neural fallback unavailable:", repr(fallback_error))
+                  subprocess.run(["curl", "-fL", "--retry", "3", BASE + "/hi_IN-pratham-medium.onnx", "-o", "models/hi_IN-pratham-medium.onnx"], check=True)
+                  subprocess.run(["curl", "-fL", "--retry", "3", BASE + "/hi_IN-pratham-medium.onnx.json", "-o", "models/hi_IN-pratham-medium.onnx.json"], check=True)
+                  subprocess.run(["piper", "--model", "models/hi_IN-pratham-medium.onnx", "--length_scale", "0.90", "--noise_scale", "0.45", "--noise_w_scale", "0.65", "--sentence_silence", "0.18", "--output_file", "output/voiceover-pratham.wav"], input=script, text=True, check=True)
+                  if os.path.getsize("output/voiceover-pratham.wav") < 1000:
+                      raise RuntimeError("Piper Pratham output is too small")
+                  source_audio = "output/voiceover-pratham.wav"
+                  print("VOICE_ENGINE=fallback-piper-hi_IN-pratham-medium")
+              except Exception as piper_error:
+                  print("Piper fallback unavailable; trying existing Hindi neural voice:", repr(piper_error))
+                  try:
+                      async def make_neural_voice():
+                          communicate = edge_tts.Communicate(script, "hi-IN-MadhurNeural", rate="+2%", pitch="-2Hz")
+                          await communicate.save("output/voiceover-edge.mp3")
+                      asyncio.run(make_neural_voice())
+                      if os.path.getsize("output/voiceover-edge.mp3") > 1000:
+                          source_audio = "output/voiceover-edge.mp3"
+                          print("VOICE_ENGINE=fallback-edge-tts-hi-IN-MadhurNeural")
+                  except Exception as fallback_error:
+                      print("Hindi neural fallback unavailable:", repr(fallback_error))
 
           if source_audio is None:
               raise RuntimeError("Both default Piper Pratham and Hindi neural fallback failed")
@@ -628,7 +614,7 @@ jobs:
           if not os.path.exists("output/voiceover.wav") or os.path.getsize("output/voiceover.wav") < 1000:
               raise RuntimeError("Compatibility WAV for caption timing was not created")
 
-          print("HINDI_MALE_VOICE_SUCCESS")
+          print("HINDI_VOICE_SUCCESS")
           PY
     
 
@@ -1744,72 +1730,27 @@ jobs:
           import os, requests
           key = os.environ.get("PIXABAY_API_KEY", "").strip()
           if not key:
-              raise SystemExit("PIXABAY_API_KEY missing; SadTalker optional step skipped.")
-          # Prefer a clearly front-facing Indian male reporter portrait, not a side/profile view.
-          # Pixabay's q parameter has a short query limit; keep every query concise.
-          # Search broad-to-specific so one overly long query cannot block all portrait options.
-          queries = [
-              "indian reporter microphone",
-              "indian male journalist",
-              "indian news reporter",
-              "male reporter india",
-              "indian man microphone"
-          ]
+              raise SystemExit("PIXABAY_API_KEY missing; free SadTalker avatar step skipped.")
+          queries = ["indian female news presenter", "indian woman journalist", "female news anchor india", "indian female presenter", "indian woman microphone"]
+          female_terms = ("woman", "women", "female", "girl", "lady", "actress")
+          male_terms = ("male", "man", "men", "gentleman", "boy")
+          role_terms = ("presenter", "anchor", "reporter", "journalist", "news", "press", "microphone", "interview")
+          reject_terms = ("profile", "side view", "sideview", "looking away", "back view", "silhouette", "faceless", "mask", "statue", "mannequin", "fashion", "glamour", "costume", "cartoon", "illustration")
           session = requests.Session()
           for q in queries:
               try:
-                  response = session.get("https://pixabay.com/api/", params={
-                      "key": key, "q": q, "image_type": "photo",
-                      "orientation": "vertical", "safesearch": "true", "per_page": 10
-                  }, timeout=25)
+                  response = session.get("https://pixabay.com/api/", params={"key": key, "q": q, "image_type": "photo", "orientation": "vertical", "safesearch": "true", "per_page": 20}, timeout=25)
                   response.raise_for_status()
                   for hit in response.json().get("hits", []):
                       tags = str(hit.get("tags", "")).lower()
-                      if any(word in tags for word in (
-                          "woman", "women", "female", "girl", "blonde", "brunette",
-                          "lady", "actress", "beauty", "makeup"
-                      )):
-                          print("SKIP_FEMALE_REPORTER_PORTRAIT:", tags[:160])
+                      tag_set = {t.strip() for t in tags.split(",")}
+                      if any(word in tags for word in reject_terms) or any(word in tag_set for word in male_terms):
                           continue
-                      if any(word in tags for word in (
-                          "profile", "side view", "sideview", "looking away", "back view",
-                          "silhouette", "faceless", "mask", "statue", "mannequin"
-                      )):
-                          print("SKIP_SIDE_FACING_OR_UNREALISTIC_REPORTER_PORTRAIT:", tags[:160])
-                          continue
-                      if not any(word in tags for word in (
-                          "microphone", "reporter", "journalist", "interview", "news", "press", "correspondent"
-                      )):
-                          print("SKIP_NON_REPORTER_PORTRAIT:", tags[:160])
-                          continue
-                      if not any(word in tags for word in ("microphone", "mic")):
-                          print("SKIP_REPORTER_PORTRAIT_WITHOUT_MIC_TAG:", tags[:160])
-                          continue
-                      has_india_context = any(word in tags for word in (
-                          "india", "indian", "new delhi", "delhi"
-                      ))
-                      has_explicit_reporter_role = any(word in tags for word in (
-                          "reporter", "journalist", "news", "press", "correspondent"
-                      ))
-                      # Pixabay tags often omit nationality even when the search query is India-specific.
-                      # Do not let a generic microphone/singer portrait pass just because it has a mic:
-                      # require an explicit newsroom/journalism tag when India itself is absent.
-                      if not has_india_context and not has_explicit_reporter_role:
-                          print("SKIP_NON_INDIAN_REPORTER_PORTRAIT:", tags[:160])
-                          continue
-                      if any(word in tags for word in (
-                          "closeup", "close-up", "extreme close up", "headshot", "selfie"
-                      )):
-                          print("SKIP_CLOSEUP_REPORTER_PORTRAIT:", tags[:160])
-                          continue
-                      # Prefer natural, front-facing editorial portraits over fashion/model imagery.
-                      if any(word in tags for word in (
-                          "fashion", "model", "beauty", "glamour", "costume", "actor", "character"
-                      )):
-                          print("SKIP_STYLIZED_OR_MODEL_PORTRAIT:", tags[:160])
-                          continue
-                      if not any(word in tags.split(",") for word in ("male", "man", "men", "gentleman", "boy")):
-                          print("SKIP_GENDER_UNCONFIRMED_REPORTER_PORTRAIT:", tags[:160])
+                      has_female_tag = any(word in tags for word in female_terms)
+                      has_role_tag = any(word in tags for word in role_terms)
+                      has_india_tag = any(word in tags for word in ("india", "indian", "delhi"))
+                      if not (has_female_tag and (has_role_tag or has_india_tag)):
+                          print("SKIP_UNVERIFIED_FEMALE_PRESENTER_PORTRAIT:", tags[:140])
                           continue
                       url = hit.get("largeImageURL") or hit.get("webformatURL")
                       if not url:
@@ -1818,16 +1759,15 @@ jobs:
                       image.raise_for_status()
                       if len(image.content) < 10000:
                           continue
-                      path = "output/sadtalker_source/reporter.jpg"
-                      with open(path, "wb") as f:
-                          f.write(image.content)
-                      print("SADTALKER_SOURCE_PHOTO_READY:", q, "ID:", hit.get("id", "unknown"))
+                      with open("output/sadtalker_source/reporter.jpg", "wb") as out:
+                          out.write(image.content)
+                      print("SADTALKER_FEMALE_PRESENTER_SOURCE_READY:", q, "ID:", hit.get("id", "unknown"))
                       raise SystemExit(0)
               except SystemExit:
                   raise
               except Exception as e:
-                  print("Source photo search warning:", q, repr(e))
-          raise SystemExit("No suitable portrait photo found; keeping regular video intro.")
+                  print("Female presenter source search warning:", q, repr(e))
+          raise SystemExit("No suitable female presenter portrait found; preview will not pretend a talking avatar was generated.")
           PY
 
           # SadTalker needs an older Python stack; isolate it so the working
@@ -2327,7 +2267,7 @@ jobs:
           retention-days: 3
 
       - name: Upload video to YouTube
-        if: inputs.preview_only != true && steps.quality.outputs.valid == 'true' && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        if: false # TEMPORARY SAFETY LOCK: preview-only phase; do not upload to YouTube
         id: upload
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
