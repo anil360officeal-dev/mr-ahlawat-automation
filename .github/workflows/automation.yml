@@ -613,10 +613,10 @@ jobs:
           set -e
           mkdir -p models output
 
-          # Preserve production voice. This file is the actual current Madhur sample.
+          # Preserve production voice. This file is the current female presenter sample (Piper Priyamvada or Swara fallback).
           cp output/voiceover.mp3 output/voice-test-production.mp3
 
-          # Generate two alternative free Hindi male neural voices separately.
+          # Optional comparison samples only; they never replace the female production narration.
           python - <<'PY'
           import asyncio
           import os
@@ -690,7 +690,7 @@ jobs:
               if os.path.exists(name) and os.path.getsize(name) >= 1000:
                   print(f"VOICE_SAMPLE_AVAILABLE={name}")
           print("VOICE_COMPARISON_SAMPLES_READY")
-          print("Production voice is now Piper Pratham by default. Compare voice-test-production.mp3 with optional Kunal/Rehaan samples.")
+          print("Production voice is female Hindi. Compare voice-test-production.mp3 with optional samples; production voice is unchanged.")
           PY
 
       - name: Download relevant Wikimedia images
