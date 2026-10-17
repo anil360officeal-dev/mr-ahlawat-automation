@@ -1789,7 +1789,6 @@ jobs:
             --result_dir "$GITHUB_WORKSPACE/output/sadtalker" \
             --preprocess crop \
             --size 256 \
-            --still \
             --cpu
           cd "$GITHUB_WORKSPACE"
 
