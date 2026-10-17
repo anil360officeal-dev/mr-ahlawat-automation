@@ -526,7 +526,7 @@ jobs:
           print("Generated script:", data["script"])
           PY
 
-      - name: Generate Hindi male voice-over
+      - name: Generate Hindi female voice-over
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
           set -e
@@ -545,46 +545,34 @@ jobs:
           if not script:
               raise RuntimeError("AI script is empty")
 
-          # Prefer a free Hindi female neural voice for the AI female presenter.
-          # Preserve the known-working Piper Hindi voice as the first fallback, then existing neural fallback.
+          # Offline-first Hindi female voice: Piper Priyamvada is free and avoids Edge-TTS network/403 failures.
+          # Edge TTS Swara is only a fallback. Never silently switch to a male voice for the female presenter.
           source_audio = None
+          BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/priyamvada/medium"
           try:
-              import edge_tts
-              async def make_female_voice():
-                  communicate = edge_tts.Communicate(script, "hi-IN-SwaraNeural", rate="-5%", pitch="+1Hz")
-                  await communicate.save("output/voiceover-swara.mp3")
-              asyncio.run(make_female_voice())
-              if os.path.getsize("output/voiceover-swara.mp3") < 1000:
-                  raise RuntimeError("Hindi female voice output is too small")
-              source_audio = "output/voiceover-swara.mp3"
-              print("VOICE_ENGINE=free-edge-tts-hi-IN-SwaraNeural-female")
-          except Exception as female_error:
-              print("Hindi female neural voice unavailable; preserving Piper fallback:", repr(female_error))
-          if source_audio is None:
-              BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/pratham/medium"
+              subprocess.run(["curl", "-fL", "--retry", "3", BASE + "/hi_IN-priyamvada-medium.onnx", "-o", "models/hi_IN-priyamvada-medium.onnx"], check=True)
+              subprocess.run(["curl", "-fL", "--retry", "3", BASE + "/hi_IN-priyamvada-medium.onnx.json", "-o", "models/hi_IN-priyamvada-medium.onnx.json"], check=True)
+              subprocess.run(["piper", "--model", "models/hi_IN-priyamvada-medium.onnx", "--length_scale", "0.96", "--noise_scale", "0.45", "--noise_w_scale", "0.65", "--sentence_silence", "0.28", "--output_file", "output/voiceover-priyamvada.wav"], input=script, text=True, check=True)
+              if os.path.getsize("output/voiceover-priyamvada.wav") < 1000:
+                  raise RuntimeError("Piper Priyamvada output is too small")
+              source_audio = "output/voiceover-priyamvada.wav"
+              print("VOICE_ENGINE=free-offline-piper-hi_IN-priyamvada-female")
+          except Exception as piper_female_error:
+              print("Piper female voice unavailable; trying free Hindi female neural fallback:", repr(piper_female_error))
               try:
-                  subprocess.run(["curl", "-fL", "--retry", "3", BASE + "/hi_IN-pratham-medium.onnx", "-o", "models/hi_IN-pratham-medium.onnx"], check=True)
-                  subprocess.run(["curl", "-fL", "--retry", "3", BASE + "/hi_IN-pratham-medium.onnx.json", "-o", "models/hi_IN-pratham-medium.onnx.json"], check=True)
-                  subprocess.run(["piper", "--model", "models/hi_IN-pratham-medium.onnx", "--length_scale", "0.90", "--noise_scale", "0.45", "--noise_w_scale", "0.65", "--sentence_silence", "0.18", "--output_file", "output/voiceover-pratham.wav"], input=script, text=True, check=True)
-                  if os.path.getsize("output/voiceover-pratham.wav") < 1000:
-                      raise RuntimeError("Piper Pratham output is too small")
-                  source_audio = "output/voiceover-pratham.wav"
-                  print("VOICE_ENGINE=fallback-piper-hi_IN-pratham-medium")
-              except Exception as piper_error:
-                  print("Piper fallback unavailable; trying existing Hindi neural voice:", repr(piper_error))
-                  try:
-                      async def make_neural_voice():
-                          communicate = edge_tts.Communicate(script, "hi-IN-MadhurNeural", rate="+2%", pitch="-2Hz")
-                          await communicate.save("output/voiceover-edge.mp3")
-                      asyncio.run(make_neural_voice())
-                      if os.path.getsize("output/voiceover-edge.mp3") > 1000:
-                          source_audio = "output/voiceover-edge.mp3"
-                          print("VOICE_ENGINE=fallback-edge-tts-hi-IN-MadhurNeural")
-                  except Exception as fallback_error:
-                      print("Hindi neural fallback unavailable:", repr(fallback_error))
+                  import edge_tts
+                  async def make_female_voice():
+                      communicate = edge_tts.Communicate(script, "hi-IN-SwaraNeural", rate="-5%", pitch="+1Hz")
+                      await communicate.save("output/voiceover-swara.mp3")
+                  asyncio.run(make_female_voice())
+                  if os.path.getsize("output/voiceover-swara.mp3") > 1000:
+                      source_audio = "output/voiceover-swara.mp3"
+                      print("VOICE_ENGINE=fallback-edge-tts-hi-IN-SwaraNeural-female")
+              except Exception as female_error:
+                  print("Hindi female neural fallback unavailable:", repr(female_error))
 
           if source_audio is None:
-              raise RuntimeError("Both default Piper Pratham and Hindi neural fallback failed")
+              raise RuntimeError("No female Hindi voice could be generated; refusing to fall back to a male voice.")
 
           subprocess.run(
               [
@@ -1731,7 +1719,7 @@ jobs:
           key = os.environ.get("PIXABAY_API_KEY", "").strip()
           if not key:
               raise SystemExit("PIXABAY_API_KEY missing; free SadTalker avatar step skipped.")
-          queries = ["indian female news presenter", "indian woman journalist", "female news anchor india", "indian female presenter", "indian woman microphone"]
+          queries = ["indian female news anchor front facing", "indian woman presenter front view", "professional indian woman portrait", "indian female journalist camera facing", "indian female presenter microphone"]
           female_terms = ("woman", "women", "female", "girl", "lady", "actress")
           male_terms = ("male", "man", "men", "gentleman", "boy")
           role_terms = ("presenter", "anchor", "reporter", "journalist", "news", "press", "microphone", "interview")
@@ -1828,22 +1816,15 @@ jobs:
               f.write(source + "\n")
           PY
 
-      - name: Use moving reporter fallback only if talking reporter failed
+      - name: Enforce AI female presenter only (no stock/live-location fallback)
         if: always() && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
           set -e
-          if [ ! -s output/media/reporter_intro.mp4 ] && [ -s output/media/reporter_stock_intro.mp4 ]; then
-            cp output/media/reporter_stock_intro.mp4 output/media/reporter_intro.mp4
-            if [ -s output/media/reporter_stock_intro_source.txt ]; then
-              cp output/media/reporter_stock_intro_source.txt output/media/reporter_intro_source.txt
-            else
-              echo "Moving reporter footage fallback; not lip-synced. Check reuse license." > output/media/reporter_intro_source.txt
-            fi
-            echo "REPORTER_FALLBACK_USED: moving stock reporter footage with Hindi voice-over; no lip-sync claim."
-          elif [ -s output/media/reporter_intro.mp4 ]; then
-            echo "TALKING_REPORTER_OR_EXISTING_INTRO_READY"
+          if [ -s output/sadtalker_success.txt ] && [ -s output/media/reporter_intro.mp4 ]; then
+            echo "AI_FEMALE_PRESENTER_READY: generated talking portrait with Hindi female narration."
           else
-            echo "NO_REPORTER_VIDEO_AVAILABLE"
+            rm -f output/media/reporter_intro.mp4 output/media/reporter_intro_source.txt
+            echo "AI_FEMALE_PRESENTER_NOT_READY: stock/live footage fallback disabled by user request."
           fi
 
       - name: Report talking-reporter generation status
@@ -2209,13 +2190,8 @@ jobs:
               fail("Final MP4 is missing or suspiciously small.")
           if not os.path.isfile(audio) or os.path.getsize(audio) < 10000:
               fail("Voice-over WAV is missing or suspiciously small.")
-          if not os.path.isfile("output/sadtalker_success.txt"):
-              # Option 6 is explicitly real reporter footage + narration, not lip-sync.
-              # Never mark a photo-only/news-graphic fallback as a successful reporter video.
-              if os.path.isfile("output/media/reporter_intro.mp4") and os.path.isfile("output/media/reporter_intro_source.txt"):
-                  print("QUALITY_CHECK_NOTE: Real reporter footage with Hindi voice-over; lip-sync is not claimed.")
-              else:
-                  fail("No reporter video was generated. Refusing to label a photo-only fallback as a finished ground report.")
+          if not os.path.isfile("output/sadtalker_success.txt") or not os.path.isfile("output/media/reporter_intro.mp4"):
+              fail("AI female talking presenter was not generated. Stock/live-location fallback is disabled; preview must not pretend lip-sync succeeded.")
           if not os.path.isfile(captions):
               fail("Hindi captions file is missing.")
           if not os.path.isfile("output/headline_overlay.png") or os.path.getsize("output/headline_overlay.png") < 1000:
