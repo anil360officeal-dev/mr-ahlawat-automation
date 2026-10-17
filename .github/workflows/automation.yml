@@ -1933,8 +1933,8 @@ jobs:
               f.write("PlayResX: 1080\nPlayResY: 1920\n\n")
               f.write("[V4+ Styles]\n")
               f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-              # Large bold white text with yellow word-by-word karaoke highlight and dark boxed backing.
-              f.write("Style: Default,Noto Sans Devanagari,62,&H0000D7FF,&H00FFFFFF,&H0010152B,&H90000000,-1,0,0,0,100,100,0,0,3,3,1,2,65,65,300,1\n\n")
+              # Large bold white text with yellow word-by-word karaoke highlight; no solid caption box.
+              f.write("Style: Default,Noto Sans Devanagari,62,&H0000D7FF,&H00FFFFFF,&H0010152B,&HFF000000,-1,0,0,0,100,100,0,0,1,3,1,2,65,65,300,1\n\n")
               f.write("[Events]\n")
               f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
               for group in groups:
@@ -2029,17 +2029,14 @@ jobs:
           )
           images = cjp_images + other_images[:4]
           reporter_path = "output/media/reporter_intro.mp4"
+          # Always keep relevant pictures and moving B-roll as the full-screen background.
+          # The real AI female presenter is layered on top only after SadTalker succeeds.
+          assets = [("logo", path) for path in cjp_images]
+          assets += [("video", path) for path in video_clips] + [
+              ("image", path) for path in other_images[:4]
+          ]
           if os.path.exists("output/sadtalker_success.txt") and os.path.exists(reporter_path):
-              # AI female presenter mode: keep the speaking avatar on screen for the full narration.
-              assets = [("reporter", reporter_path)]
-              print("VISUAL_MODE=full-length-lip-synced-AI-presenter")
-          else:
-              assets = [("logo", path) for path in cjp_images]
-              if os.path.exists(reporter_path):
-                  assets.append(("reporter", reporter_path))
-              assets += [("video", path) for path in video_clips] + [
-                  ("image", path) for path in other_images[:4]
-              ]
+              print("VISUAL_MODE=moving-background-with-AI-female-presenter-overlay")
 
           if not assets:
               raise RuntimeError("No image or video visuals found.")
