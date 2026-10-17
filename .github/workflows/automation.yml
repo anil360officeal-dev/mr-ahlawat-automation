@@ -1546,8 +1546,8 @@ jobs:
           print(f"VISUAL_FILES_READY: {len(visuals)}")
           PY
 
-      - name: Find free street-reporter video intro (Pixabay, Pexels, Wikimedia Commons)
-        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+      - name: Find free street-reporter video intro (disabled for AI presenter mode)
+        if: false # AI female presenter mode: no live-location or stock reporter footage
         env:
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
@@ -1718,7 +1718,7 @@ jobs:
 
       - name: Generate optional talking reporter with SadTalker (CPU, free)
         # Prefer genuine moving on-location reporter footage when available; a still portrait animation is not a ground report.
-        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false' && !hashFiles('output/media/reporter_stock_intro.mp4') && !hashFiles('output/media/reporter_intro.mp4')
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         continue-on-error: true
         timeout-minutes: 40
         env:
@@ -1788,9 +1788,8 @@ jobs:
           curl -fL --retry 3 "$BASE/mapping_00229-model.pth.tar" -o /tmp/SadTalker/checkpoints/mapping_00229-model.pth.tar
           curl -fL --retry 3 "$BASE/SadTalker_V0.0.2_256.safetensors" -o /tmp/SadTalker/checkpoints/SadTalker_V0.0.2_256.safetensors
 
-          # The final edit only uses the first 7.5 seconds of the talking reporter.
-          # Generate that short audio segment instead of processing the entire narration.
-          ffmpeg -y -i output/voiceover.wav -t 7.5 -ac 1 -ar 16000 output/sadtalker_source/reporter_audio.wav
+          # Drive the avatar with the complete narration so mouth movement matches the full Short.
+          ffmpeg -y -i output/voiceover.wav -ac 1 -ar 16000 output/sadtalker_source/reporter_audio.wav
 
           mkdir -p output/sadtalker
           # SadTalker resolves ./checkpoints relative to the current directory.
@@ -1818,7 +1817,7 @@ jobs:
           target = "output/media/reporter_intro.mp4"
           # Keep generated talking face silent here; production narration is muxed later.
           subprocess.run([
-              "ffmpeg", "-y", "-i", source, "-an", "-t", "7.5",
+              "ffmpeg", "-y", "-i", source, "-an",
               "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p",
               "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", target
           ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -2049,12 +2048,17 @@ jobs:
           )
           images = cjp_images + other_images[:4]
           reporter_path = "output/media/reporter_intro.mp4"
-          assets = [("logo", path) for path in cjp_images]
-          if os.path.exists(reporter_path):
-              assets.append(("reporter", reporter_path))
-          assets += [("video", path) for path in video_clips] + [
-              ("image", path) for path in other_images[:4]
-          ]
+          if os.path.exists("output/sadtalker_success.txt") and os.path.exists(reporter_path):
+              # AI female presenter mode: keep the speaking avatar on screen for the full narration.
+              assets = [("reporter", reporter_path)]
+              print("VISUAL_MODE=full-length-lip-synced-AI-presenter")
+          else:
+              assets = [("logo", path) for path in cjp_images]
+              if os.path.exists(reporter_path):
+                  assets.append(("reporter", reporter_path))
+              assets += [("video", path) for path in video_clips] + [
+                  ("image", path) for path in other_images[:4]
+              ]
 
           if not assets:
               raise RuntimeError("No image or video visuals found.")
