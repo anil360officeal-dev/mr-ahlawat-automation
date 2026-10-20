@@ -211,6 +211,25 @@ jobs:
           items.sort(key=post_priority, reverse=True)
 
           for post in items[:40]:
+              # Only build from fresh X posts; don't recycle an old viral post as today's news.
+              raw_created = str(post.get("createdAt", "")).strip()
+              post_time = None
+              if raw_created:
+                  try:
+                      post_time = datetime.fromisoformat(raw_created.replace("Z", "+00:00"))
+                  except ValueError:
+                      try:
+                          post_time = datetime.strptime(raw_created, "%a %b %d %H:%M:%S %z %Y")
+                      except ValueError:
+                          post_time = None
+              if post_time is None:
+                  print("SKIP_X_POST_WITH_UNPARSEABLE_DATE:", raw_created[:100])
+                  continue
+              if post_time.tzinfo is None:
+                  post_time = post_time.replace(tzinfo=timezone.utc)
+              if now - post_time.astimezone(timezone.utc) > timedelta(hours=72) or post_time > now + timedelta(minutes=10):
+                  print("SKIP_STALE_OR_FUTURE_X_POST:", raw_created[:100])
+                  continue
               post_id = str(post.get("id", "")).strip()
               text = str(post.get("text", "")).strip()
               post_url = str(post.get("url", "")).strip()
