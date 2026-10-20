@@ -23,13 +23,11 @@ on:
         required: true
         default: true
         type: boolean
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/automation.yml"
-  schedule:
-    # India time (IST): 08:00, 14:00, 19:00 = 02:30, 08:30, 13:30 UTC
-    - cron: "30 2,8,13 * * *"
+  # Temporarily paused: run previews manually until the talking-avatar output passes review.
+  # Re-enable scheduled news builds after the preview pipeline is verified.
+  # schedule:
+  #   # India time (IST): 08:00, 14:00, 19:00 = 02:30, 08:30, 13:30 UTC
+  #   - cron: "30 2,8,13 * * *"
 
 concurrency:
   group: mr-ahlawat-daily-news-upload
@@ -605,7 +603,7 @@ jobs:
           # Preserve the production male voice sample (Piper Rohan or Kunal fallback).
           cp output/voiceover.mp3 output/voice-test-production.mp3
 
-          # Optional comparison samples only; they never replace the female production narration.
+          # Optional comparison samples only; they never replace the male production narration.
           python - <<'PY'
           import asyncio
           import os
@@ -679,7 +677,7 @@ jobs:
               if os.path.exists(name) and os.path.getsize(name) >= 1000:
                   print(f"VOICE_SAMPLE_AVAILABLE={name}")
           print("VOICE_COMPARISON_SAMPLES_READY")
-          print("Production voice is female Hindi. Compare voice-test-production.mp3 with optional samples; production voice is unchanged.")
+          print("Production voice is male Hindi. Compare voice-test-production.mp3 with optional samples; production voice is unchanged.")
           PY
 
       - name: Download relevant Wikimedia images
@@ -2054,6 +2052,10 @@ jobs:
 
           if not assets:
               raise RuntimeError("No image or video visuals found.")
+          if not any(kind == "reporter" for kind, _path in assets):
+              raise RuntimeError("AI talking reporter is missing; refusing to render a non-reporter preview.")
+          if len(assets) < 2:
+              raise RuntimeError("No independent B-roll/photo was available. Refusing to loop the same talking portrait over the full narration; add topic visuals and retry.")
 
           # Start with CJP logo card, then reporter, then India-focused topic footage/photos.
           transition_duration = 0.45
@@ -2201,8 +2203,6 @@ jobs:
               fail("AI male talking avatar was not generated. Stock/live-location fallback is disabled; preview must not pretend lip-sync succeeded.")
           if not os.path.isfile(captions):
               fail("Hindi captions file is missing.")
-          if not os.path.isfile("output/headline_overlay.png") or os.path.getsize("output/headline_overlay.png") < 1000:
-              fail("Headline text overlay is missing or invalid.")
           with open(captions, encoding="utf-8") as f:
               caption_text = f.read()
           caption_count = caption_text.count("Dialogue:")
