@@ -23,6 +23,10 @@ on:
         required: true
         default: true
         type: boolean
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/automation.yml"
   schedule:
     # India time (IST): 08:00, 14:00, 19:00 = 02:30, 08:30, 13:30 UTC
     - cron: "30 2,8,13 * * *"
@@ -328,8 +332,8 @@ jobs:
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SHORT_TOPIC: ${{ steps.cjp.outputs.topic || inputs.topic }}
-          CONTENT_MODE: ${{ inputs.content_mode || 'news' }}
+          SHORT_TOPIC: ${{ steps.cjp.outputs.topic || inputs.topic || 'एक मजेदार हरियाणवी जोक और दिल से निकली छोटी शायरी' }}
+          CONTENT_MODE: ${{ inputs.content_mode || (github.event_name == 'schedule' && 'news' || 'both') }}
         run: |
           python - <<'PY'
           import os
@@ -681,7 +685,7 @@ jobs:
       - name: Download relevant Wikimedia images
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         env:
-          SHORT_TOPIC: ${{ inputs.topic }}
+          SHORT_TOPIC: ${{ inputs.topic || 'एक मजेदार हरियाणवी जोक और दिल से निकली छोटी शायरी' }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
