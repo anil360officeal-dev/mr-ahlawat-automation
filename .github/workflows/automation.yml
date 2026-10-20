@@ -1521,8 +1521,8 @@ jobs:
           print(f"VISUAL_FILES_READY: {len(visuals)}")
           PY
 
-      - name: Find free street-reporter video intro (disabled for AI presenter mode)
-        if: false # AI avatar mode: no live-location or stock reporter footage
+      - name: Find free moving street-reporter video intro (fallback only if talking avatar fails)
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         env:
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
@@ -1828,15 +1828,17 @@ jobs:
               f.write(source + "\n")
           PY
 
-      - name: Enforce AI male avatar only (no stock/live-location fallback)
+      - name: Select honest reporter visual fallback
         if: always() && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
           set -e
           if [ -s output/sadtalker_success.txt ] && [ -s output/media/reporter_intro.mp4 ]; then
-            echo "AI_MALE_AVATAR_READY: generated talking portrait with Hindi male narration."
+            echo "REPORTER_MODE=talking_avatar_with_generated_lip_sync"
+          elif [ -s output/media/reporter_stock_intro.mp4 ] && [ -s output/media/reporter_stock_intro_source.txt ]; then
+            echo "REPORTER_MODE=real_moving_stock_reporter_with_voiceover_no_claim_of_lip_sync"
           else
             rm -f output/media/reporter_intro.mp4 output/media/reporter_intro_source.txt
-            echo "AI_MALE_AVATAR_NOT_READY: stock/live footage fallback disabled by user request."
+            echo "REPORTER_MODE=unavailable; render quality gate will stop rather than use a still portrait"
           fi
 
       - name: Report talking-reporter generation status
@@ -2040,12 +2042,16 @@ jobs:
               key=lambda path: (0 if os.path.basename(path) == "india_gate_landmark.jpg" else 1, path)
           )
           images = cjp_images + other_images[:4]
-          reporter_path = "output/media/reporter_intro.mp4"
-          # Full-screen talking reporter first, then full-screen topic visuals.
+          avatar_path = "output/media/reporter_intro.mp4"
+          stock_reporter_path = "output/media/reporter_stock_intro.mp4"
+          # Prefer the actual lip-synced avatar; if generation fails, use a real moving reporter clip with voice-over.
           assets = [("logo", path) for path in cjp_images]
-          if os.path.exists("output/sadtalker_success.txt") and os.path.exists(reporter_path):
-              assets.append(("reporter", reporter_path))
+          if os.path.exists("output/sadtalker_success.txt") and os.path.exists(avatar_path):
+              assets.append(("reporter", avatar_path))
               print("VISUAL_MODE=full-screen-talking-reporter-intro-then-B-roll")
+          elif os.path.exists(stock_reporter_path) and os.path.exists("output/media/reporter_stock_intro_source.txt"):
+              assets.append(("reporter", stock_reporter_path))
+              print("VISUAL_MODE=real-moving-reporter-with-voiceover-no-lipsync-claim")
           assets += [("video", path) for path in video_clips] + [
               ("image", path) for path in other_images[:4]
           ]
@@ -2053,9 +2059,9 @@ jobs:
           if not assets:
               raise RuntimeError("No image or video visuals found.")
           if not any(kind == "reporter" for kind, _path in assets):
-              raise RuntimeError("AI talking reporter is missing; refusing to render a non-reporter preview.")
+              raise RuntimeError("No verified moving reporter clip or talking avatar is available; refusing a still-photo-only preview.")
           if len(assets) < 2:
-              raise RuntimeError("No independent B-roll/photo was available. Refusing to loop the same talking portrait over the full narration; add topic visuals and retry.")
+              raise RuntimeError("No independent B-roll/photo was available. Refusing to loop the same reporter footage over the full narration; add topic visuals and retry.")
 
           # Start with CJP logo card, then reporter, then India-focused topic footage/photos.
           transition_duration = 0.45
@@ -2161,15 +2167,16 @@ jobs:
           print(f"VOICEOVER_DURATION: {duration:.2f} seconds")
           PY
 
-          if [ -s output/sadtalker_success.txt ] && [ -s output/media/reporter_intro.mp4 ]; then
-            # The talking reporter is already the first full-screen segment in visuals.mp4.
+          if { [ -s output/sadtalker_success.txt ] && [ -s output/media/reporter_intro.mp4 ]; } || \
+             { [ -s output/media/reporter_stock_intro.mp4 ] && [ -s output/media/reporter_stock_intro_source.txt ]; }; then
             # Keep the screen clean: no picture-in-picture avatar and no large top banner.
+            # If stock reporter footage is used, the narration is voice-over, not claimed lip-sync.
             ffmpeg -y -i output/visuals.mp4 -i output/voiceover.mp3 \
               -vf "subtitles=filename=output/captions.ass" \
               -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -pix_fmt yuv420p \
               -c:a aac -b:a 128k -shortest output/mr-ahlawat-short.mp4
           else
-            echo "ERROR: AI male avatar missing; do not render fake avatar preview."
+            echo "ERROR: No moving reporter video available; refusing still-only preview."
             exit 1
           fi
 
@@ -2199,8 +2206,14 @@ jobs:
               fail("Final MP4 is missing or suspiciously small.")
           if not os.path.isfile(audio) or os.path.getsize(audio) < 10000:
               fail("Voice-over WAV is missing or suspiciously small.")
-          if not os.path.isfile("output/sadtalker_success.txt") or not os.path.isfile("output/media/reporter_intro.mp4"):
-              fail("AI male talking avatar was not generated. Stock/live-location fallback is disabled; preview must not pretend lip-sync succeeded.")
+          avatar_ready = os.path.isfile("output/sadtalker_success.txt") and os.path.isfile("output/media/reporter_intro.mp4")
+          stock_ready = os.path.isfile("output/media/reporter_stock_intro.mp4") and os.path.isfile("output/media/reporter_stock_intro_source.txt")
+          if not avatar_ready and not stock_ready:
+              fail("No moving reporter video was generated. Refusing a still-photo-only preview.")
+          if avatar_ready:
+              print("REPORTER_QUALITY_MODE: talking avatar with generated lip-sync")
+          else:
+              print("REPORTER_QUALITY_MODE: real moving reporter with Hindi voice-over; lip-sync not claimed")
           if not os.path.isfile(captions):
               fail("Hindi captions file is missing.")
           with open(captions, encoding="utf-8") as f:
