@@ -789,15 +789,17 @@ jobs:
           except Exception as edge_error:
               print("NEURAL_HINDI_VOICE_UNAVAILABLE; using offline Piper fallback:", repr(edge_error))
           if source_audio is None:
-              base = "https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/pratham/medium"
+              # Use the Rohan Hindi male model as the offline fallback; neural Edge voices
+              # remain first choice when the runner can reach the service.
+              base = "https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/rohan/medium"
               try:
-                  subprocess.run(["curl", "-fL", "--retry", "3", base + "/hi_IN-pratham-medium.onnx", "-o", "models/hi_IN-pratham-medium.onnx"], check=True)
-                  subprocess.run(["curl", "-fL", "--retry", "3", base + "/hi_IN-pratham-medium.onnx.json", "-o", "models/hi_IN-pratham-medium.onnx.json"], check=True)
-                  subprocess.run(["piper", "--model", "models/hi_IN-pratham-medium.onnx", "--length_scale", "0.90", "--noise_scale", "0.32", "--noise_w_scale", "0.50", "--sentence_silence", "0.16", "--output_file", "output/voiceover-pratham.wav"], input=script, text=True, check=True)
-                  if os.path.getsize("output/voiceover-pratham.wav") < 1000:
-                      raise RuntimeError("Piper Pratham output is too small")
-                  source_audio = "output/voiceover-pratham.wav"
-                  print("VOICE_ENGINE=fallback-offline-piper-hi_IN-pratham-male")
+                  subprocess.run(["curl", "-fL", "--retry", "3", base + "/hi_IN-rohan-medium.onnx", "-o", "models/hi_IN-rohan-medium.onnx"], check=True)
+                  subprocess.run(["curl", "-fL", "--retry", "3", base + "/hi_IN-rohan-medium.onnx.json", "-o", "models/hi_IN-rohan-medium.onnx.json"], check=True)
+                  subprocess.run(["piper", "--model", "models/hi_IN-rohan-medium.onnx", "--length_scale", "0.94", "--noise_scale", "0.38", "--noise_w_scale", "0.58", "--sentence_silence", "0.22", "--output_file", "output/voiceover-rohan.wav"], input=script, text=True, check=True)
+                  if os.path.getsize("output/voiceover-rohan.wav") < 1000:
+                      raise RuntimeError("Piper Rohan output is too small")
+                  source_audio = "output/voiceover-rohan.wav"
+                  print("VOICE_ENGINE=fallback-offline-piper-hi_IN-rohan-male")
               except Exception as piper_error:
                   raise RuntimeError("Both neural and offline Hindi voices failed: " + repr(piper_error))
           subprocess.run(["ffmpeg", "-y", "-i", source_audio, "-af", "highpass=f=75,lowpass=f=11000,equalizer=f=180:t=q:w=1:g=1.0,equalizer=f=2800:t=q:w=1:g=1.5,acompressor=threshold=-21dB:ratio=2.0:attack=15:release=160,loudnorm=I=-16:TP=-1.5:LRA=10", "-b:a", "192k", "output/voiceover.mp3"], check=True)
@@ -2194,22 +2196,44 @@ jobs:
               json.dump([{"start": max(0.0, float(g[0]["start"])), "end": min(duration, max(float(g[-1]["end"]), float(g[0]["start"]) + 0.18)), "text": " ".join(ass_safe(w["text"]) for w in g)} for g in groups], f, ensure_ascii=False, indent=2)
           print("PILLOW_CAPTION_TIMELINE_CREATED:", len(groups))
 
-          # Keep the old headline/ticker text files for diagnostics only.
-          # The video renderer intentionally uses NO top headline banner/overlay:
-          # this was repeatedly reported as box-like clutter by the channel owner.
+          # Create a headline as transparent text with a dark outline only:
+          # no filled banner, no rounded rectangle, no "आज की बड़ी खबर" label.
           with open("output/metadata.json", encoding="utf-8") as f:
               metadata = json.load(f)
           headline = re.sub(r"\s+", " ", metadata.get("title", "MR AHLAWAT NEWS")).strip()
-          headline = headline.replace("\\", " ").replace("'", "’")
+          headline = re.sub(r"#\w+", "", headline).replace("\\", " ").replace("'", "’").strip(" •|")
           ticker = re.sub(r"\s+", " ", metadata.get("description", script)).strip()
-          ticker = ticker.replace("\\", " ").replace("'", "’")
           with open("output/headline.txt", "w", encoding="utf-8") as f:
               f.write(headline[:90])
           with open("output/ticker.txt", "w", encoding="utf-8") as f:
-              f.write(("  •  BREAKING UPDATE  •  " + ticker + "  •  ")[:240])
-          from PIL import Image
-          Image.new("RGBA", (1080, 300), (0, 0, 0, 0)).save("output/headline_overlay.png")
-          print("HEADLINE_OVERLAY_DISABLED: fully transparent; no top banner or title box")
+              f.write(ticker[:240])
+          from PIL import Image, ImageDraw, ImageFont, features
+          if not features.check("raqm"):
+              raise RuntimeError("Pillow RAQM unavailable for Hindi headline shaping")
+          font_path = subprocess.run(["fc-match", "-f", "%{file}", "Noto Sans Devanagari:style=Bold"], capture_output=True, text=True, check=True).stdout.strip()
+          if not font_path or not os.path.isfile(font_path) or "DejaVu" in font_path:
+              raise RuntimeError("Noto Sans Devanagari font unavailable for headline")
+          overlay = Image.new("RGBA", (1080, 300), (0, 0, 0, 0))
+          draw = ImageDraw.Draw(overlay)
+          headline_font = ImageFont.truetype(font_path, 48, layout_engine=ImageFont.Layout.RAQM)
+          words = headline.split()
+          rows, row = [], ""
+          for word in words:
+              candidate = (row + " " + word).strip()
+              if row and draw.textbbox((0, 0), candidate, font=headline_font, stroke_width=3)[2] > 970:
+                  rows.append(row)
+                  row = word
+              else:
+                  row = candidate
+          if row:
+              rows.append(row)
+          y = 28
+          for line in rows[:2]:
+              draw.text((54, y), line, font=headline_font, fill=(255,255,255,255),
+                        stroke_width=4, stroke_fill=(0,0,0,245))
+              y += 66
+          overlay.save("output/headline_overlay.png")
+          print("HEADLINE_OVERLAY_CREATED: transparent text only; no filled boxes")
 
           # Build a real storyboard: event-topic footage first, then relevant topic photos.
           # Do not use generic India Gate imagery unless the story is actually about that place.
@@ -2424,8 +2448,8 @@ jobs:
                   raw=b"".join(chunks)
                   t=frame_index/FPS
                   frame=Image.frombytes("RGB",(W,H),raw).convert("RGBA")
-                  # Deliberately do not composite a headline/banner image.
-                  # Captions below are text-only with black outline, no filled background.
+                  # Composite transparent headline text only; it contains no filled shapes.
+                  frame.alpha_composite(headline, (0, 0))
                   active=next((c for c in cues if c["start"]<=t<c["end"]),None)
                   if active and active.get("text","").strip():
                       draw=ImageDraw.Draw(frame)
