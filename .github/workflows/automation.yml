@@ -326,6 +326,63 @@ jobs:
                   break
 
           if not selected:
+              # X search can return HTTP 402 when the account's API plan does not include search.
+              # Keep X as the first-choice lead; if unavailable, use current independent coverage
+              # to create a preview rather than silently failing or inventing an X post.
+              fallback_queries = [
+                  '"CJP" "Abhijeet Dipke" "Ashutosh Ranka" "Saurav Das"',
+                  '"Ashutosh Ranka" "Saurav Das" custody Delhi',
+                  '"CJP" Jantar Mantar Gyanesh Kumar latest'
+              ]
+              for fallback_query in fallback_queries:
+                  rss_url = "https://news.google.com/rss/search?q=" + urllib.parse.quote(fallback_query) + "&hl=en-IN&gl=IN&ceid=IN:en"
+                  try:
+                      req = urllib.request.Request(rss_url, headers={"User-Agent": "Mozilla/5.0 MrAhlawatShorts/1.0"})
+                      with urllib.request.urlopen(req, timeout=20) as response:
+                          root = ET.fromstring(response.read())
+                  except Exception as e:
+                      print("NEWS_FALLBACK_WARNING:", repr(e))
+                      continue
+                  for item in root.findall(".//item")[:20]:
+                      article_title = (item.findtext("title") or "").strip()
+                      article_link = (item.findtext("link") or "").strip()
+                      source_node = item.find("source")
+                      source_name = source_node.text.strip() if source_node is not None and source_node.text else ""
+                      source_url = source_node.get("url", "") if source_node is not None else ""
+                      domain = (urlparse(source_url or article_link).hostname or "").lower()
+                      if not any(domain == d or domain.endswith("." + d) for d in trusted_domains):
+                          continue
+                      pub_date = item.findtext("pubDate") or ""
+                      try:
+                          published = parsedate_to_datetime(pub_date)
+                          if published.tzinfo is None:
+                              published = published.replace(tzinfo=timezone.utc)
+                          if now - published.astimezone(timezone.utc) > timedelta(days=3):
+                              continue
+                      except Exception:
+                          continue
+                      lower_title = article_title.lower()
+                      if not any(term in lower_title for term in ("cjp", "cockroach", "abhijeet", "ashutosh ranka", "saurav das", "sourav das", "gyanesh kumar")):
+                          continue
+                      selected = {
+                          "id": "news-fallback-" + str(abs(hash(article_link))),
+                          "text": article_title,
+                          "url": article_link,
+                          "createdAt": pub_date,
+                          "author": {"username": source_name, "name": source_name},
+                          "corroborating_articles": [{
+                              "title": article_title, "url": article_link,
+                              "source": source_name, "matched_terms": ["CJP/current-affairs fallback"]
+                          }],
+                          "raw_post": {},
+                          "source_type": "news_fallback_x_search_unavailable"
+                      }
+                      print("X_SEARCH_UNAVAILABLE_USING_RECENT_VERIFIED_NEWS_FALLBACK:", article_link)
+                      break
+                  if selected:
+                      break
+
+          if not selected:
               print("NO_CJP_OR_BJP_CRITICISM_STORY_CORROBORATED_BY_RECENT_TRUSTED_NEWS; skipping upload.")
               output("should_run", "false")
               raise SystemExit(0)
