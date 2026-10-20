@@ -2235,44 +2235,22 @@ jobs:
               json.dump([{"start": max(0.0, float(g[0]["start"])), "end": min(duration, max(float(g[-1]["end"]), float(g[0]["start"]) + 0.18)), "text": " ".join(ass_safe(w["text"]) for w in g)} for g in groups], f, ensure_ascii=False, indent=2)
           print("PILLOW_CAPTION_TIMELINE_CREATED:", len(groups))
 
-          # Create topic-specific text assets for the newsroom layout.
+          # Keep the old headline/ticker text files for diagnostics only.
+          # The video renderer intentionally uses NO top headline banner/overlay:
+          # this was repeatedly reported as box-like clutter by the channel owner.
           with open("output/metadata.json", encoding="utf-8") as f:
               metadata = json.load(f)
           headline = re.sub(r"\s+", " ", metadata.get("title", "MR AHLAWAT NEWS")).strip()
           headline = headline.replace("\\", " ").replace("'", "’")
           ticker = re.sub(r"\s+", " ", metadata.get("description", script)).strip()
-          ticker = ticker.replace("\\", " ").replace("'", "’")
+          ticker = ticker.replace("\\", " ").replace("'", "’')
           with open("output/headline.txt", "w", encoding="utf-8") as f:
               f.write(headline[:90])
           with open("output/ticker.txt", "w", encoding="utf-8") as f:
               f.write(("  •  BREAKING UPDATE  •  " + ticker + "  •  ")[:240])
-
-          # Render a real, readable headline overlay image. The previous workflow
-          # created headline.txt/ticker.txt but never composited them into the MP4.
-          from PIL import Image, ImageDraw, ImageFont
-          from textwrap import wrap
-          # Transparent text-only overlay: no panel or rectangle behind the headline.
-          overlay = Image.new("RGBA", (1080, 300), (0, 0, 0, 0))
-          draw = ImageDraw.Draw(overlay)
-          import subprocess
-          font_match = subprocess.run(["fc-match", "-f", "%{file}", "Noto Sans Devanagari:style=Bold"], capture_output=True, text=True, check=True).stdout.strip()
-          if not font_match or not os.path.isfile(font_match) or "DejaVu" in font_match:
-              raise RuntimeError("A real Noto Devanagari font was not resolved; refusing box-glyph headline")
-          headline_font = ImageFont.truetype(font_match, 54, layout_engine=ImageFont.Layout.RAQM)
-          label_font = ImageFont.truetype(font_match, 28, layout_engine=ImageFont.Layout.RAQM)
-          reporter_exists = os.path.exists("output/sadtalker_success.txt") or (os.path.exists("output/media/reporter_stock_intro.mp4") and os.path.exists("output/media/reporter_stock_intro_source.txt"))
-          top_label = "GROUND REPORT  •  MR AHLAWAT" if reporter_exists else "NEWS EXPLAINER  •  MR AHLAWAT"
-          draw.text((54, 24), top_label, font=label_font,
-                    fill=(255, 210, 55, 255), stroke_width=2, stroke_fill=(0, 0, 0, 220))
-          clean_headline = re.sub(r"#\w+", "", headline).strip(" •|")
-          headline_lines = wrap(clean_headline, width=26)[:3] or ["आज की बड़ी खबर"]
-          y = 76
-          for line in headline_lines:
-              draw.text((54, y), line, font=headline_font, fill=(255, 255, 255, 255),
-                        stroke_width=3, stroke_fill=(0, 0, 0, 230))
-              y += 66
-          overlay.save("output/headline_overlay.png")
-          print("HEADLINE_OVERLAY_CREATED: output/headline_overlay.png")
+          from PIL import Image
+          Image.new("RGBA", (1080, 300), (0, 0, 0, 0)).save("output/headline_overlay.png")
+          print("HEADLINE_OVERLAY_DISABLED: fully transparent; no top banner or title box")
 
           # Build a real storyboard: event-topic footage first, then relevant topic photos.
           # Do not use generic India Gate imagery unless the story is actually about that place.
@@ -2487,7 +2465,8 @@ jobs:
                   raw=b"".join(chunks)
                   t=frame_index/FPS
                   frame=Image.frombytes("RGB",(W,H),raw).convert("RGBA")
-                  frame.alpha_composite(headline,(0,18))
+                  # Deliberately do not composite a headline/banner image.
+                  # Captions below are text-only with black outline, no filled background.
                   active=next((c for c in cues if c["start"]<=t<c["end"]),None)
                   if active and active.get("text","").strip():
                       draw=ImageDraw.Draw(frame)
