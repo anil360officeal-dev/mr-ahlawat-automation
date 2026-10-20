@@ -6,12 +6,12 @@ on:
       topic:
         description: "Shayari, comedy, ya news ka topic"
         required: true
-        default: "एक मजेदार हरियाणवी जोक और दिल से निकली छोटी शायरी"
+        default: "CJP से जुड़ी ताज़ा और सत्यापित दिल्ली-NCR खबर"
         type: string
       content_mode:
         description: "Manual Short ka content style"
         required: true
-        default: both
+        default: news
         type: choice
         options:
           - both
