@@ -1342,7 +1342,7 @@ jobs:
                               social_image_count += 1
                               attribution.append(f"Public social post thumbnail (review usage rights before publishing) | Source post: {post_url}")
                               print(f"PUBLIC_SOCIAL_THUMBNAIL_SAVED: {prefix} image {social_image_count}")
-                      if video_count >= 2:
+                      if video_count >= 5:
                           continue
                       temp_template = f"output/media/social_{prefix}_%(id)s.%(ext)s"
                       result = subprocess.run(["python", "-m", "yt_dlp", "--no-warnings", "--no-playlist", "--no-progress", "--max-filesize", "80M", "-f", "best[ext=mp4]/best", "-o", temp_template, post_url], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=100)
@@ -1427,7 +1427,7 @@ jobs:
           
           # NASA's official media API is keyless. Use only for non-public-affairs topics,
           # because space footage is not a suitable visual for protest/court/politics stories.
-          if not is_protest_story and video_count < 2:
+          if not is_protest_story and video_count < 5:
               try:
                   nasa_response = session.get(
                       "https://images-api.nasa.gov/search",
@@ -1438,7 +1438,7 @@ jobs:
                   nasa_response.raise_for_status()
                   nasa_items = nasa_response.json().get("collection", {}).get("items", [])
                   for nasa_item in nasa_items:
-                      if video_count >= 2:
+                      if video_count >= 5:
                           break
                       data = (nasa_item.get("data") or [{}])[0]
                       nasa_id = data.get("nasa_id", "")
@@ -1484,7 +1484,7 @@ jobs:
           
           # Internet Archive advanced search: download only when the item metadata explicitly
           # declares public-domain/CC0/Creative Commons terms; otherwise keep a review link.
-          if video_count < 2:
+          if video_count < 5:
               try:
                   ia_query = (queries[0] if queries else topic or title).replace('"', " ")
                   ia_response = session.get(
@@ -1497,7 +1497,7 @@ jobs:
                   ia_response.raise_for_status()
                   ia_docs = ia_response.json().get("response", {}).get("docs", [])
                   for doc in ia_docs:
-                      if video_count >= 2:
+                      if video_count >= 5:
                           break
                       ident = str(doc.get("identifier", "")).strip()
                       if not ident:
@@ -1574,14 +1574,14 @@ jobs:
           # Use it for protest stories, while preserving creator/license attribution.
           if is_protest_story:
               for search_term in queries[:5] + ["India protest demonstration rally crowd", "Jantar Mantar protest India"]:
-                  if video_count >= 2:
+                  if video_count >= 5:
                       break
                   try:
                       response = session.get("https://commons.wikimedia.org/w/api.php", params={"action": "query", "format": "json", "list": "search", "srnamespace": 6, "srsearch": search_term, "srlimit": 8}, timeout=30)
                       response.raise_for_status()
                       results = response.json().get("query", {}).get("search", [])
                       for result in results:
-                          if video_count >= 2:
+                          if video_count >= 5:
                               break
                           file_title = result.get("title", "")
                           if not file_title:
@@ -1674,7 +1674,7 @@ jobs:
           video_key = os.environ.get("PIXABAY_API_KEY", "").strip()
           if video_key:
               for search_term in queries[:3]:
-                  if video_count >= 2:
+                  if video_count >= 5:
                       break
                   try:
                       api = session.get(
@@ -1686,7 +1686,7 @@ jobs:
                       api.raise_for_status()
                       hits = api.json().get("hits", [])
                       for hit in hits:
-                          if video_count >= 2:
+                          if video_count >= 5:
                               break
                           variants = hit.get("videos", {})
                           clip = variants.get("medium") or variants.get("small") or variants.get("large")
@@ -1719,7 +1719,7 @@ jobs:
           if pexels_key:
               pexels_queries = queries[:3] + ["India street crowd", "Indian city traffic", "public demonstration India"]
               for search_term in pexels_queries:
-                  if video_count >= 2:
+                  if video_count >= 5:
                       break
                   try:
                       response = session.get(
@@ -1730,7 +1730,7 @@ jobs:
                       )
                       response.raise_for_status()
                       for hit in response.json().get("videos", []):
-                          if video_count >= 2:
+                          if video_count >= 5:
                               break
                           files = sorted(hit.get("video_files", []),
                               key=lambda item: item.get("width", 0) * item.get("height", 0), reverse=True)
