@@ -1699,8 +1699,8 @@ jobs:
           key: sadtalker-checkpoints-crop256-v1
 
       - name: Generate free talking Indian male avatar with SadTalker (CPU)
-        # Prefer genuine moving on-location reporter footage when available; a still portrait animation is not a ground report.
-        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        # Disabled after review found an unrelated grayscale portrait; prefer moving reporter footage over a misleading talking portrait.
+        if: false
         continue-on-error: true
         timeout-minutes: 40
         run: |
@@ -1844,10 +1844,10 @@ jobs:
       - name: Report talking-reporter generation status
         if: always() && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
-          if [ -s output/sadtalker_success.txt ]; then
-            echo "SADTALKER_VERIFIED_MALE_AVATAR_OUTPUT: $(cat output/sadtalker_success.txt)"
+          if [ -s output/media/reporter_stock_intro.mp4 ] && [ -s output/media/reporter_stock_intro_source.txt ]; then
+            echo "REPORTER_READY: moving reporter footage with Hindi voice-over; no lip-sync claim."
           else
-            echo "SADTALKER_NOT_GENERATED: no verified male talking avatar; quality gate will block upload."
+            echo "REPORTER_MISSING: no suitable moving reporter clip; preview should fail rather than use unrelated stills."
           fi
 
       - name: Create Ground Report video with Hindi captions
