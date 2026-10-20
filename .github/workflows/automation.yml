@@ -90,7 +90,7 @@ jobs:
 
       - name: Select and verify CJP or BJP-critical news
         id: cjp
-        if: github.event_name == 'schedule' && steps.daily.outputs.allowed != 'false'
+        if: steps.daily.outputs.allowed != 'false' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.content_mode == 'news' || inputs.content_mode == 'both')))
         run: |
           python - <<'PY'
           import json
@@ -156,7 +156,9 @@ jobs:
               '"BJP" (against OR criticism OR protest OR scandal OR controversy OR viral) India -filter:replies',
               '"BJP government" (failure OR question OR protest OR corruption OR inflation OR unemployment) -filter:replies',
               'Modi government criticism viral India protest court election -filter:replies',
-              'भारत BJP सरकार विरोध महंगाई बेरोजगारी किसान वायरल -filter:replies'
+              'भारत BJP सरकार विरोध महंगाई बेरोजगारी किसान वायरल -filter:replies',
+            'India (breaking OR viral OR latest) (court OR election OR protest OR policy OR minister) -filter:replies',
+            'India Supreme Court Parliament government latest news -filter:replies'
           ]
           items = []
           known_ids = set()
@@ -198,8 +200,10 @@ jobs:
               body = str(post.get("text", "")).lower()
               tokens = words(body)
               relevant = len(tokens & issue_terms)
+              # Prefer CJP updates when they are present, then rank broader public-interest stories.
+              cjp_priority = 1 if any(term in body for term in ("cjp", "abhijeet dipke", "ashutosh ranka", "saurav das", "ashu", "अभिजीत दीपके", "अभिजीत दिपके", "आशुतोष रांका", "सौरव दास")) else 0
               created = str(post.get("createdAt", ""))
-              return (relevant, created)
+              return (cjp_priority, relevant, created)
           items.sort(key=post_priority, reverse=True)
 
           for post in items[:40]:
@@ -224,7 +228,15 @@ jobs:
                                   or "modi" in lower_text or "मोदी" in lower_text) and any(
                                       term in lower_text for term in bjp_criticism_terms
                                   )
-              if not (is_cjp or is_bjp_criticism):
+              major_issue_terms = (
+                  "supreme court", "high court", "election commission", "gyanesh kumar",
+                  "parliament", "minister resign", "resignation", "paper leak", "neet",
+                  "farmers protest", "unemployment", "inflation", "women safety", "corruption",
+                  "लोकसभा", "सुप्रीम कोर्ट", "हाई कोर्ट", "चुनाव आयोग", "ज्ञानेश कुमार",
+                  "पेपर लीक", "बेरोजगारी", "महंगाई", "किसान आंदोलन", "भ्रष्टाचार"
+              )
+              is_major_india_issue = any(term in lower_text for term in major_issue_terms)
+              if not (is_cjp or is_bjp_criticism or is_major_india_issue):
                   continue
 
               substantive = [
@@ -684,7 +696,7 @@ jobs:
       - name: Download relevant Wikimedia images
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         env:
-          SHORT_TOPIC: ${{ inputs.topic || 'CJP से जुड़ी ताज़ा और सत्यापित दिल्ली-NCR खबर' }}
+          SHORT_TOPIC: ${{ steps.cjp.outputs.topic || inputs.topic || 'CJP से जुड़ी ताज़ा और सत्यापित दिल्ली-NCR खबर' }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
@@ -721,6 +733,23 @@ jobs:
           # Classify public-affairs stories for protest-style visuals even when the
           # generated title/script omits the word "protest" (e.g. CJP/government stories).
           topic_text = " ".join([topic, title] + generated_queries + [str(metadata.get("script", ""))]).lower()
+
+          # Search specifically for people named in the selected story. Use Commons first so the
+          # asset's creator and license can be recorded; never substitute a random lookalike.
+          entity_story_text = topic_text
+          entity_queries = []
+          entity_rules = [
+              ("Abhijeet Dipke", ("abhijeet dipke", "abhijeet", "dipke", "अभिजीत दीपके", "अभिजीत दिपके")),
+              ("Ashutosh Ranka", ("ashutosh ranka", "ashutosh", "ranka", "ashu", "आशुतोष रांका", "आशु")),
+              ("Saurav Das", ("saurav das", "sourav das", "saurav", "sourav", "सौरव दास", "सौरभ दास")),
+              ("Narendra Modi", ("narendra modi", "modi", "नरेंद्र मोदी", "मोदी")),
+              ("Gyanesh Kumar", ("gyanesh kumar", "gyanesh", "ज्ञानेश कुमार"))
+          ]
+          for entity_name, aliases in entity_rules:
+              if any(alias in entity_story_text for alias in aliases):
+                  entity_queries.append(entity_name + " Wikimedia Commons")
+          if entity_queries:
+              print("NAMED_PERSON_IMAGE_QUERIES:", entity_queries)
           protest_terms = ("protest", "protests", "demonstration", "rally", "dharna", "andolan", "jantarmantar", "जंतर मंतर", "प्रदर्शन", "धरना", "आंदोलन", "मोर्चा")
           public_affairs_terms = ("cjp", "bjp", "modi", "government", "court", "election", "activist", "democracy", "citizens for justice", "राजनीति", "सरकार", "अदालत", "चुनाव", "विरोध")
           is_protest_story = any(term in topic_text for term in protest_terms) or any(term in topic_text for term in public_affairs_terms)
@@ -765,7 +794,7 @@ jobs:
                   ))
               ]
               queries = []
-              for q in india_queries + generated_queries[:3] + [title, topic]:
+              for q in entity_queries + india_queries + generated_queries[:3] + [title, topic]:
                   q = q.strip() if isinstance(q, str) else ""
                   if q and q.lower() not in {item.lower() for item in queries}:
                       queries.append(q)
@@ -875,8 +904,8 @@ jobs:
           # For public-affairs/protest stories, do NOT use loosely matched stock photos.
           # Use the India Gate landmark plus designed newsroom cards instead.
           image_key = os.environ.get("PIXABAY_API_KEY", "").strip()
-          if image_key and not is_protest_story:
-              for search_term in queries[:4]:
+          if image_key:
+              for search_term in queries[:6]:
                   if saved >= 5:
                       break
                   try:
@@ -985,7 +1014,8 @@ jobs:
                           ]
                           visual_terms = (
                               "cjp", "cockroach janata", "abhijeet", "dipke", "ashu",
-                              "saurav", "gyanesh", "election commission", "jantarmantar",
+                              "ashutosh", "ranka", "saurav", "sourav", "das", "modi", "narendra",
+                              "gyanesh", "election commission", "jantarmantar",
                               "jantar mantar", "protest", "demonstration", "rally",
                               "dharna", "andolan", "police", "barricade", "parliament",
                               "new delhi", "india gate"
