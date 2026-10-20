@@ -153,6 +153,10 @@ jobs:
           # Search CJP/BJP plus major India-wide public issues; no official X API key.
           search_queries = [
               'CJP -filter:replies',
+            'from:abhijeet_dipke -filter:replies',
+            'from:AshutoshRanka -filter:replies',
+            'from:SauravDassss -filter:replies',
+            '"Ashutosh Ranka" OR "Saurav Das" OR "Abhijeet Dipke" -filter:replies',
               '"BJP" (against OR criticism OR protest OR scandal OR controversy OR viral) India -filter:replies',
               '"BJP government" (failure OR question OR protest OR corruption OR inflation OR unemployment) -filter:replies',
               'Modi government criticism viral India protest court election -filter:replies',
@@ -215,7 +219,7 @@ jobs:
               lower_text = text.lower()
               # Run any CJP-related post; for BJP stories, focus on criticism/opposition
               # and major controversies rather than generic/supportive BJP chatter.
-              is_cjp = "cjp" in lower_text
+              is_cjp = any(term in lower_text for term in ("cjp", "abhijeet dipke", "ashutosh ranka", "saurav das", "ashu", "अभिजीत दीपके", "अभिजीत दिपके", "आशुतोष रांका", "सौरव दास"))
               bjp_criticism_terms = (
                   "against bjp", "bjp government", "modi government", "protest",
                   "criticism", "scandal", "controversy", "corruption", "failure",
@@ -864,6 +868,9 @@ jobs:
               gate_search.raise_for_status()
               for gate_item in gate_search.json().get("query", {}).get("search", []):
                   gate_title = gate_item.get("title", "")
+                  if is_protest_story:
+                      print("SKIP_GENERIC_INDIA_GATE_FOR_PROTEST_STORY: use event/person-specific visuals instead")
+                      break
                   # Wikimedia search can return unrelated satellite/aerial photos.
                   # Only accept a file whose actual title identifies India Gate.
                   if "india gate" not in gate_title.lower():
