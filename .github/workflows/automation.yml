@@ -57,7 +57,7 @@ jobs:
       - name: Check daily upload limit
         id: daily
         env:
-          PREVIEW_ONLY: ${{ inputs.preview_only }}
+          PREVIEW_ONLY: ${{ inputs.preview_only || github.event_name != 'schedule' }}
         run: |
           python - <<'PY'
           import json, os
@@ -2175,7 +2175,7 @@ jobs:
         id: quality
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         env:
-          PREVIEW_ONLY: ${{ inputs.preview_only }}
+          PREVIEW_ONLY: ${{ inputs.preview_only || github.event_name != 'schedule' }}
         run: |
           python - <<'PY'
           import json, os, subprocess, sys, re
