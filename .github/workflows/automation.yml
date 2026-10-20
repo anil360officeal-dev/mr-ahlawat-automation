@@ -1771,7 +1771,7 @@ jobs:
           curl -fL --retry 3 "$BASE/SadTalker_V0.0.2_256.safetensors" -o /tmp/SadTalker/checkpoints/SadTalker_V0.0.2_256.safetensors
 
           # Drive the avatar with the complete narration so mouth movement matches the full Short.
-          ffmpeg -y -i output/voiceover.wav -ac 1 -ar 16000 output/sadtalker_source/reporter_audio.wav
+          # Only animate the opening greeting/hook; then cut to full-screen B-roll.\n          # This makes CPU-only SadTalker substantially faster than animating the whole narration.\n          ffmpeg -y -i output/voiceover.wav -t 7.5 -ac 1 -ar 16000 output/sadtalker_source/reporter_audio.wav
 
           mkdir -p output/sadtalker
           # SadTalker resolves ./checkpoints relative to the current directory.
