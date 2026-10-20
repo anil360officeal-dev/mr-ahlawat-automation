@@ -240,12 +240,12 @@ jobs:
           # posts. These are news articles, not mislabelled Facebook/Instagram posts.
           news_leads_added = 0
           fallback_queries = [
-                  '"CJP" "Abhijeet Dipke"',
-                  '"Ashutosh Ranka" OR "Saurav Das"',
-                  'India protest Supreme Court election latest',
-              ]
+              '"CJP" "Abhijeet Dipke"',
+              '"Ashutosh Ranka" OR "Saurav Das"',
+              'India protest Supreme Court election latest',
+          ]
           for query in fallback_queries:
-          rss_url = (
+              rss_url = (
                   "https://news.google.com/rss/search?q="
                   + urllib.parse.quote(query)
                   + "&hl=en-IN&gl=IN&ceid=IN:en"
