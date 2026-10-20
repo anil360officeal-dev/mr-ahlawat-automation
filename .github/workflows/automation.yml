@@ -330,8 +330,8 @@ jobs:
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SHORT_TOPIC: ${{ steps.cjp.outputs.topic || inputs.topic || 'एक मजेदार हरियाणवी जोक और दिल से निकली छोटी शायरी' }}
-          CONTENT_MODE: ${{ inputs.content_mode || (github.event_name == 'schedule' && 'news' || 'both') }}
+          SHORT_TOPIC: ${{ steps.cjp.outputs.topic || inputs.topic || 'CJP से जुड़ी ताज़ा और सत्यापित दिल्ली-NCR खबर' }}
+          CONTENT_MODE: ${{ inputs.content_mode || 'news' }}
         run: |
           python - <<'PY'
           import os
@@ -683,7 +683,7 @@ jobs:
       - name: Download relevant Wikimedia images
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         env:
-          SHORT_TOPIC: ${{ inputs.topic || 'एक मजेदार हरियाणवी जोक और दिल से निकली छोटी शायरी' }}
+          SHORT_TOPIC: ${{ inputs.topic || 'CJP से जुड़ी ताज़ा और सत्यापित दिल्ली-NCR खबर' }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
