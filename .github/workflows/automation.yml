@@ -561,17 +561,18 @@ jobs:
           if not script:
               raise RuntimeError("AI script is empty")
           source_audio = None
-          base = "https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/rohan/medium"
+          # Use the previously tested Pratham Hindi male Piper voice as production narration.
+          base = "https://huggingface.co/rhasspy/piper-voices/resolve/main/hi/hi_IN/pratham/medium"
           try:
-              subprocess.run(["curl", "-fL", "--retry", "3", base + "/hi_IN-rohan-medium.onnx", "-o", "models/hi_IN-rohan-medium.onnx"], check=True)
-              subprocess.run(["curl", "-fL", "--retry", "3", base + "/hi_IN-rohan-medium.onnx.json", "-o", "models/hi_IN-rohan-medium.onnx.json"], check=True)
-              subprocess.run(["piper", "--model", "models/hi_IN-rohan-medium.onnx", "--length_scale", "0.96", "--noise_scale", "0.45", "--noise_w_scale", "0.65", "--sentence_silence", "0.28", "--output_file", "output/voiceover-rohan.wav"], input=script, text=True, check=True)
-              if os.path.getsize("output/voiceover-rohan.wav") < 1000:
-                  raise RuntimeError("Piper Rohan output is too small")
-              source_audio = "output/voiceover-rohan.wav"
-              print("VOICE_ENGINE=free-offline-piper-hi_IN-rohan-male")
+              subprocess.run(["curl", "-fL", "--retry", "3", base + "/hi_IN-pratham-medium.onnx", "-o", "models/hi_IN-pratham-medium.onnx"], check=True)
+              subprocess.run(["curl", "-fL", "--retry", "3", base + "/hi_IN-pratham-medium.onnx.json", "-o", "models/hi_IN-pratham-medium.onnx.json"], check=True)
+              subprocess.run(["piper", "--model", "models/hi_IN-pratham-medium.onnx", "--length_scale", "0.90", "--noise_scale", "0.45", "--noise_w_scale", "0.65", "--sentence_silence", "0.18", "--output_file", "output/voiceover-pratham.wav"], input=script, text=True, check=True)
+              if os.path.getsize("output/voiceover-pratham.wav") < 1000:
+                  raise RuntimeError("Piper Pratham output is too small")
+              source_audio = "output/voiceover-pratham.wav"
+              print("VOICE_ENGINE=free-offline-piper-hi_IN-pratham-male")
           except Exception as piper_error:
-              print("Piper Rohan unavailable; trying free Hindi male neural fallback:", repr(piper_error))
+              print("Piper Pratham unavailable; trying free Hindi male neural fallback:", repr(piper_error))
               try:
                   import asyncio, edge_tts
                   async def make_male_voice():
@@ -600,7 +601,7 @@ jobs:
           set -e
           mkdir -p models output
 
-          # Preserve the production male voice sample (Piper Rohan or Kunal fallback).
+          # Preserve the production male voice sample (Piper Pratham or Kunal fallback).
           cp output/voiceover.mp3 output/voice-test-production.mp3
 
           # Optional comparison samples only; they never replace the male production narration.
@@ -677,7 +678,7 @@ jobs:
               if os.path.exists(name) and os.path.getsize(name) >= 1000:
                   print(f"VOICE_SAMPLE_AVAILABLE={name}")
           print("VOICE_COMPARISON_SAMPLES_READY")
-          print("Production voice is male Hindi. Compare voice-test-production.mp3 with optional samples; production voice is unchanged.")
+          print("Production voice is Piper Pratham Hindi male (Kunal fallback only if Pratham fails).")
           PY
 
       - name: Download relevant Wikimedia images
