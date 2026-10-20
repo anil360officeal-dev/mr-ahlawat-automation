@@ -2216,6 +2216,10 @@ jobs:
                       + " ".join(karaoke) + "\n"
                   )
 
+          with open("output/caption_groups.json", "w", encoding="utf-8") as f:
+              json.dump([{"start": max(0.0, float(g[0]["start"])), "end": min(duration, max(float(g[-1]["end"]), float(g[0]["start"]) + 0.18)), "text": " ".join(ass_safe(w["text"]) for w in g)} for g in groups], f, ensure_ascii=False, indent=2)
+          print("PILLOW_CAPTION_TIMELINE_CREATED:", len(groups))
+
           # Create topic-specific text assets for the newsroom layout.
           with open("output/metadata.json", encoding="utf-8") as f:
               metadata = json.load(f)
@@ -2421,16 +2425,69 @@ jobs:
           if { [ -s output/sadtalker_success.txt ] && [ -s output/media/reporter_intro.mp4 ]; } || \
              { [ -s output/media/reporter_stock_intro.mp4 ] && [ -s output/media/reporter_stock_intro_source.txt ]; } || \
              compgen -G "output/media/clip_*.mp4" > /dev/null; then
-            # If there is no reporter, render genuine moving B-roll with narration and captions.
-            # It is illustrative footage only: do not claim reporter presence, lip-sync, or exact-event footage.
-            ffmpeg -y -i output/visuals.mp4 -i output/voiceover.mp3 -loop 1 -framerate 30 -i output/headline_overlay.png \
-              -filter_complex "[0:v][2:v]overlay=0:18:format=auto,subtitles=filename=output/captions.ass:force_style='FontName=Noto Sans Devanagari,FontSize=68,PrimaryColour=&H00FFFFFF,BackColour=&HFF000000,OutlineColour=&H00000000,BorderStyle=1,Outline=4,Shadow=0,Alignment=2,MarginL=64,MarginR=64,MarginV=250'[v]" \
-              -map "[v]" -map 1:a:0 -c:v libx264 -preset veryfast -pix_fmt yuv420p \
-              -c:a aac -b:a 160k -shortest output/mr-ahlawat-short.mp4
+            # New caption renderer: Pillow + RAQM shapes Devanagari and draws transparent text directly on frames.
+            python - <<'PY'
+          import json, os, subprocess
+          from PIL import Image, ImageDraw, ImageFont
+          W, H, FPS = 1080, 1920, 30
+          with open("output/caption_groups.json", encoding="utf-8") as f:
+              cues = json.load(f)
+          font_path = "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf"
+          if not os.path.exists(font_path):
+              font_path = "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf"
+          if not os.path.exists(font_path):
+              raise RuntimeError("Devanagari font missing; refusing broken caption render")
+          try:
+              font = ImageFont.truetype(font_path, 66, layout_engine=ImageFont.Layout.RAQM)
+          except Exception as e:
+              raise RuntimeError("Pillow RAQM shaping unavailable: " + repr(e))
+          print("CAPTION_RENDERER=Pillow-RAQM", font_path)
+          headline = Image.open("output/headline_overlay.png").convert("RGBA")
+          decoder = subprocess.Popen(["ffmpeg","-v","error","-i","output/visuals.mp4","-vf","scale=1080:1920:flags=lanczos,fps=30","-f","rawvideo","-pix_fmt","rgb24","pipe:1"], stdout=subprocess.PIPE)
+          encoder = subprocess.Popen(["ffmpeg","-y","-v","error","-f","rawvideo","-pix_fmt","rgb24","-s","1080x1920","-r","30","-i","pipe:0","-an","-c:v","libx264","-preset","veryfast","-crf","20","-pix_fmt","yuv420p","output/captioned-visuals.mp4"], stdin=subprocess.PIPE)
+          frame_bytes=W*H*3
+          frame_index=0
+          try:
+              while True:
+                  raw=decoder.stdout.read(frame_bytes)
+                  if len(raw)!=frame_bytes: break
+                  t=frame_index/FPS
+                  frame=Image.frombytes("RGB",(W,H),raw).convert("RGBA")
+                  frame.alpha_composite(headline,(0,18))
+                  active=next((c for c in cues if c["start"]<=t<c["end"]),None)
+                  if active and active.get("text","").strip():
+                      draw=ImageDraw.Draw(frame)
+                      words=active["text"].split()
+                      lines=[]; line=""
+                      for word in words:
+                          trial=(line+" "+word).strip()
+                          if line and draw.textbbox((0,0),trial,font=font,stroke_width=3)[2]>930:
+                              lines.append(line); line=word
+                          else: line=trial
+                      if line: lines.append(line)
+                      lines=lines[-2:]
+                      heights=[draw.textbbox((0,0),ln,font=font,stroke_width=3)[3] for ln in lines]
+                      y=1510-(sum(heights)+max(0,len(lines)-1)*10)//2
+                      for ln,h in zip(lines,heights):
+                          bb=draw.textbbox((0,0),ln,font=font,stroke_width=3)
+                          x=(W-(bb[2]-bb[0]))//2
+                          draw.text((x,y),ln,font=font,fill=(255,255,255,255),stroke_width=4,stroke_fill=(0,0,0,255))
+                          y+=h+10
+                  encoder.stdin.write(frame.convert("RGB").tobytes())
+                  frame_index+=1
+          finally:
+              decoder.stdout.close()
+              encoder.stdin.close()
+          dr=decoder.wait(); er=encoder.wait()
+          if dr or er or frame_index<1: raise RuntimeError(f"caption render failed decoder={dr} encoder={er} frames={frame_index}")
+          print("PILLOW_CAPTION_RENDER_SUCCESS frames=",frame_index)
+          PY
+            ffmpeg -y -i output/captioned-visuals.mp4 -i output/voiceover.mp3 -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 160k -shortest output/mr-ahlawat-short.mp4
           else
             echo "ERROR: No moving video footage available; refusing still-only preview."
             exit 1
           fi
+
 
       - name: Validate rendered Short before upload
         id: quality
