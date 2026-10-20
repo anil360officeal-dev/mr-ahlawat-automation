@@ -766,7 +766,7 @@ jobs:
           try:
               subprocess.run(["curl", "-fL", "--retry", "3", base + "/hi_IN-pratham-medium.onnx", "-o", "models/hi_IN-pratham-medium.onnx"], check=True)
               subprocess.run(["curl", "-fL", "--retry", "3", base + "/hi_IN-pratham-medium.onnx.json", "-o", "models/hi_IN-pratham-medium.onnx.json"], check=True)
-              subprocess.run(["piper", "--model", "models/hi_IN-pratham-medium.onnx", "--length_scale", "0.90", "--noise_scale", "0.45", "--noise_w_scale", "0.65", "--sentence_silence", "0.18", "--output_file", "output/voiceover-pratham.wav"], input=script, text=True, check=True)
+              subprocess.run(["piper", "--model", "models/hi_IN-pratham-medium.onnx", "--length_scale", "0.84", "--noise_scale", "0.40", "--noise_w_scale", "0.60", "--sentence_silence", "0.14", "--output_file", "output/voiceover-pratham.wav"], input=script, text=True, check=True)
               if os.path.getsize("output/voiceover-pratham.wav") < 1000:
                   raise RuntimeError("Piper Pratham output is too small")
               source_audio = "output/voiceover-pratham.wav"
@@ -785,7 +785,7 @@ jobs:
                   print("Hindi male neural fallback unavailable:", repr(edge_error))
           if source_audio is None:
               raise RuntimeError("No Hindi male voice could be generated.")
-          subprocess.run(["ffmpeg", "-y", "-i", source_audio, "-af", "highpass=f=80,lowpass=f=11500,equalizer=f=180:t=q:w=1:g=1.0,equalizer=f=2500:t=q:w=1:g=1.6,acompressor=threshold=-20dB:ratio=2.2:attack=15:release=140,loudnorm=I=-16:TP=-1.5:LRA=10", "-b:a", "192k", "output/voiceover.mp3"], check=True)
+          subprocess.run(["ffmpeg", "-y", "-i", source_audio, "-af", "atempo=1.06,highpass=f=75,lowpass=f=11500,equalizer=f=160:t=q:w=1:g=1.2,equalizer=f=2800:t=q:w=1:g=2.0,acompressor=threshold=-22dB:ratio=2.8:attack=8:release=110,loudnorm=I=-15:TP=-1.5:LRA=8", "-b:a", "192k", "output/voiceover.mp3"], check=True)
           if os.path.getsize("output/voiceover.mp3") < 1000:
               raise RuntimeError("Voice-over file is too small")
           subprocess.run(["ffmpeg", "-y", "-i", "output/voiceover.mp3", "-ar", "24000", "-ac", "1", "output/voiceover.wav"], check=True)
@@ -2195,8 +2195,8 @@ jobs:
               f.write("PlayResX: 1080\nPlayResY: 1920\n\n")
               f.write("[V4+ Styles]\n")
               f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-              # Large, legible Hindi Shorts captions: keep large type; transparent background, no box, subtle outline only.
-              f.write("Style: Default,Noto Sans Devanagari,72,&H00FFFFFF,&H0000D7FF,&H0010152B,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,2,58,58,235,1\n\n")
+              # Large static phrase captions avoid karaoke-block artifacts; transparent background.
+              f.write("Style: Default,Noto Sans Devanagari,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&HFF000000,-1,0,0,0,100,100,0,0,1,3,0,2,58,58,235,1\n\n")
               f.write("[Events]\n")
               f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
               for group in groups:
@@ -2208,7 +2208,7 @@ jobs:
                       # Include natural inter-word pause in the current word's highlight, but cap it.
                       span = max(0.08, min(1.2, next_start - word["start"]))
                       centiseconds = max(1, int(round(span * 100)))
-                      karaoke.append(f"{{\\kf{centiseconds}}}{ass_safe(word['text'])}")
+                      karaoke.append(ass_safe(word["text"]))
                   f.write(
                       f"Dialogue: 0,{stamp(group_start)},{stamp(group_end)},Default,,0,0,0,,"
                       + " ".join(karaoke) + "\n"
@@ -2230,26 +2230,23 @@ jobs:
           # created headline.txt/ticker.txt but never composited them into the MP4.
           from PIL import Image, ImageDraw, ImageFont
           from textwrap import wrap
+          # Transparent text-only overlay: no panel or rectangle behind the headline.
           overlay = Image.new("RGBA", (1080, 300), (0, 0, 0, 0))
           draw = ImageDraw.Draw(overlay)
           bold_path = "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Bold.ttf"
-          regular_path = "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf"
           if not os.path.exists(bold_path):
               bold_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-              regular_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-          headline_font = ImageFont.truetype(bold_path, 46)
-          label_font = ImageFont.truetype(bold_path, 26)
-          draw.rounded_rectangle((28, 10, 1052, 286), radius=24,
-                                 fill=(5, 17, 35, 224), outline=(255, 190, 45, 255), width=3)
-          draw.rounded_rectangle((28, 10, 43, 286), radius=6, fill=(229, 57, 53, 255))
-          draw.text((68, 28), "बड़ी खबर  |  MR AHLAWAT", font=label_font, fill=(0, 217, 255, 255))
+          headline_font = ImageFont.truetype(bold_path, 54)
+          label_font = ImageFont.truetype(bold_path, 28)
+          draw.text((54, 24), "GROUND REPORT  •  MR AHLAWAT", font=label_font,
+                    fill=(255, 210, 55, 255), stroke_width=2, stroke_fill=(0, 0, 0, 220))
           clean_headline = re.sub(r"#\w+", "", headline).strip(" •|")
-          headline_lines = wrap(clean_headline, width=29)[:3] or ["आज की बड़ी खबर"]
+          headline_lines = wrap(clean_headline, width=26)[:3] or ["आज की बड़ी खबर"]
           y = 76
           for line in headline_lines:
-              draw.text((68, y), line, font=headline_font, fill=(255, 255, 255, 255),
-                        stroke_width=1, stroke_fill=(5, 17, 35, 255))
-              y += 62
+              draw.text((54, y), line, font=headline_font, fill=(255, 255, 255, 255),
+                        stroke_width=3, stroke_fill=(0, 0, 0, 230))
+              y += 66
           overlay.save("output/headline_overlay.png")
           print("HEADLINE_OVERLAY_CREATED: output/headline_overlay.png")
 
@@ -2424,10 +2421,10 @@ jobs:
              compgen -G "output/media/clip_*.mp4" > /dev/null; then
             # If there is no reporter, render genuine moving B-roll with narration and captions.
             # It is illustrative footage only: do not claim reporter presence, lip-sync, or exact-event footage.
-            ffmpeg -y -i output/visuals.mp4 -i output/voiceover.mp3 \
-              -vf "subtitles=filename=output/captions.ass" \
-              -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -pix_fmt yuv420p \
-              -c:a aac -b:a 128k -shortest output/mr-ahlawat-short.mp4
+            ffmpeg -y -i output/visuals.mp4 -i output/voiceover.mp3 -loop 1 -framerate 30 -i output/headline_overlay.png \
+              -filter_complex "[0:v][2:v]overlay=0:18:format=auto,subtitles=filename=output/captions.ass:force_style='FontName=Noto Sans Devanagari,FontSize=72,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=0,Alignment=2,MarginL=58,MarginR=58,MarginV=235'[v]" \
+              -map "[v]" -map 1:a:0 -c:v libx264 -preset veryfast -pix_fmt yuv420p \
+              -c:a aac -b:a 160k -shortest output/mr-ahlawat-short.mp4
           else
             echo "ERROR: No moving video footage available; refusing still-only preview."
             exit 1
