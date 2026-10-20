@@ -2304,8 +2304,12 @@ jobs:
 
           if not assets:
               raise RuntimeError("No image or video visuals found.")
+          # If no presenter is available, allow actual moving public-affairs B-roll as a clearly
+          # illustrative voice-over preview. Never label this as a reporter or lip-synced avatar.
+          if not any(kind in ("reporter", "video") for kind, _path in assets):
+              raise RuntimeError("No moving video footage or talking avatar is available; refusing a still-photo-only preview.")
           if not any(kind == "reporter" for kind, _path in assets):
-              raise RuntimeError("No verified moving reporter clip or talking avatar is available; refusing a still-photo-only preview.")
+              print("VISUAL_MODE=illustrative-moving-B-roll-with-voiceover-no-reporter-no-lipsync")
           if len(assets) < 2:
               raise RuntimeError("No independent B-roll/photo was available. Refusing to loop the same reporter footage over the full narration; add topic visuals and retry.")
 
@@ -2414,15 +2418,16 @@ jobs:
           PY
 
           if { [ -s output/sadtalker_success.txt ] && [ -s output/media/reporter_intro.mp4 ]; } || \
-             { [ -s output/media/reporter_stock_intro.mp4 ] && [ -s output/media/reporter_stock_intro_source.txt ]; }; then
-            # Keep the screen clean: no picture-in-picture avatar and no large top banner.
-            # If stock reporter footage is used, the narration is voice-over, not claimed lip-sync.
+             { [ -s output/media/reporter_stock_intro.mp4 ] && [ -s output/media/reporter_stock_intro_source.txt ]; } || \
+             compgen -G "output/media/clip_*.mp4" > /dev/null; then
+            # If there is no reporter, render genuine moving B-roll with narration and captions.
+            # It is illustrative footage only: do not claim reporter presence, lip-sync, or exact-event footage.
             ffmpeg -y -i output/visuals.mp4 -i output/voiceover.mp3 \
               -vf "subtitles=filename=output/captions.ass" \
               -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -pix_fmt yuv420p \
               -c:a aac -b:a 128k -shortest output/mr-ahlawat-short.mp4
           else
-            echo "ERROR: No moving reporter video available; refusing still-only preview."
+            echo "ERROR: No moving video footage available; refusing still-only preview."
             exit 1
           fi
 
