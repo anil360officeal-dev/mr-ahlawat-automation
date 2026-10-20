@@ -2174,13 +2174,13 @@ jobs:
           def ass_safe(value):
               return value.replace("{", "(").replace("}", ")").replace("\\", "")
 
-          # Short caption beats for a clean mobile screen; avoid crowded multi-line captions.
+          # Keep captions to short phrases that remain readable at large size.
           groups = []
           current = []
           char_count = 0
           for word in timed_words:
               token_len = len(word["text"])
-              if current and (len(current) >= 4 or char_count + token_len > 19):
+              if current and (len(current) >= 3 or char_count + token_len > 17):
                   groups.append(current)
                   current = []
                   char_count = 0
@@ -2195,8 +2195,8 @@ jobs:
               f.write("PlayResX: 1080\nPlayResY: 1920\n\n")
               f.write("[V4+ Styles]\n")
               f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-              # Clean Shorts captions: white words, yellow karaoke highlight, restrained dark outline, no box/shadow.
-              f.write("Style: Default,Noto Sans Devanagari,48,&H00FFFFFF,&H0000D7FF,&H0010152B,&HFF000000,-1,0,0,0,100,100,0,0,1,2,0,2,72,72,250,1\n\n")
+              # Large, legible Hindi Shorts captions: keep large type; transparent background, no box, subtle outline only.
+              f.write("Style: Default,Noto Sans Devanagari,72,&H00FFFFFF,&H0000D7FF,&H0010152B,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,2,58,58,235,1\n\n")
               f.write("[Events]\n")
               f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
               for group in groups:
