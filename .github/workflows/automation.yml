@@ -1689,6 +1689,13 @@ jobs:
               print("STREET_REPORTER_INTRO_NOT_FOUND: no suitable moving reporter clip found; do not substitute still photos.")
           PY
 
+      - name: Cache SadTalker model checkpoints
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        uses: actions/cache@v5
+        with:
+          path: /tmp/sadtalker-checkpoints
+          key: sadtalker-checkpoints-crop256-v1
+
       - name: Generate free talking Indian male avatar with SadTalker (CPU)
         # Prefer genuine moving on-location reporter footage when available; a still portrait animation is not a ground report.
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
@@ -1765,13 +1772,23 @@ jobs:
           # Download only the crop/256px checkpoints required for this run.
           # The upstream helper downloads both 256px and 512px models plus optional
           # face-enhancement weights, wasting time and disk on a CPU-only runner.
-          mkdir -p /tmp/SadTalker/checkpoints
+          mkdir -p /tmp/sadtalker-checkpoints
+          ln -s /tmp/sadtalker-checkpoints /tmp/SadTalker/checkpoints
           BASE="https://github.com/OpenTalker/SadTalker/releases/download/v0.0.2-rc"
-          curl -fL --retry 3 "$BASE/mapping_00229-model.pth.tar" -o /tmp/SadTalker/checkpoints/mapping_00229-model.pth.tar
-          curl -fL --retry 3 "$BASE/SadTalker_V0.0.2_256.safetensors" -o /tmp/SadTalker/checkpoints/SadTalker_V0.0.2_256.safetensors
+          if [ ! -s /tmp/sadtalker-checkpoints/mapping_00229-model.pth.tar ]; then
+            curl -fL --retry 3 "$BASE/mapping_00229-model.pth.tar" -o /tmp/sadtalker-checkpoints/mapping_00229-model.pth.tar
+          else
+            echo "SADTALKER_CACHE_HIT: mapping checkpoint"
+          fi
+          if [ ! -s /tmp/sadtalker-checkpoints/SadTalker_V0.0.2_256.safetensors ]; then
+            curl -fL --retry 3 "$BASE/SadTalker_V0.0.2_256.safetensors" -o /tmp/sadtalker-checkpoints/SadTalker_V0.0.2_256.safetensors
+          else
+            echo "SADTALKER_CACHE_HIT: 256px model checkpoint"
+          fi
 
-          # Drive the avatar with the complete narration so mouth movement matches the full Short.
-          # Only animate the opening greeting/hook; then cut to full-screen B-roll.\n          # This makes CPU-only SadTalker substantially faster than animating the whole narration.\n          ffmpeg -y -i output/voiceover.wav -t 7.5 -ac 1 -ar 16000 output/sadtalker_source/reporter_audio.wav
+          # Animate only the opening greeting/hook; then cut to full-screen B-roll.
+          # This is substantially faster than animating the entire narration on CPU.
+          ffmpeg -y -i output/voiceover.wav -t 7.5 -ac 1 -ar 16000 output/sadtalker_source/reporter_audio.wav
 
           mkdir -p output/sadtalker
           # SadTalker resolves ./checkpoints relative to the current directory.
@@ -1858,7 +1875,7 @@ jobs:
           timed_words = []
           try:
               subprocess.run(
-                  ["python", "-m", "pip", "install", "--quiet", "faster-whisper==1.1.1"],
+                  ["python", "-m", "pip", "install", "--quiet", "faster-whisper==1.1.1", "av>=12,<15"],
                   check=True, timeout=240
               )
               from faster_whisper import WhisperModel
