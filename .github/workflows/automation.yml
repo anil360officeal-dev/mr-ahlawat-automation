@@ -2256,10 +2256,8 @@ jobs:
           overlay.save("output/headline_overlay.png")
           print("HEADLINE_OVERLAY_CREATED: output/headline_overlay.png")
 
-          # Never promote unreviewed social-post clips/thumbnails into the main video.
-          # For public-affairs/protest stories, moving clips from Commons/Pixabay
-          # were not reliably topic-verified and caused unrelated visuals. Prefer
-          # vetted photos plus newsroom graphics instead of potentially wrong clips.
+          # Build a real storyboard: event-topic footage first, then relevant topic photos.
+          # Do not use generic India Gate imagery unless the story is actually about that place.
           topic_text = " ".join([
               str(os.environ.get("SHORT_TOPIC", "")),
               str(json.load(open("output/metadata.json", encoding="utf-8")).get("title", "")),
@@ -2270,86 +2268,79 @@ jobs:
               "जंतर मंतर", "प्रदर्शन", "धरना", "आंदोलन", "cjp",
               "ashu", "saurav", "abhijeet dipke", "gyanesh kumar"
           ))
-          # These Pixabay clips were fetched using the story's India/protest-focused
-          # search terms above. Use them as illustrative moving B-roll, not as proof
-          # that the footage depicts the exact event.
-          video_clips = sorted(glob.glob("output/media/clip_*.mp4"))[:2]
+          video_clips = sorted(glob.glob("output/media/clip_*.mp4"))
+          # A maximum of five distinct clips; all are treated as illustrative unless
+          # the source itself was verified as the exact event.
+          video_clips = video_clips[:5]
           if public_affairs_story and video_clips:
-              print("PUBLIC_AFFAIRS_BROLL_ENABLED_AS_ILLUSTRATIVE_FOOTAGE:", len(video_clips))
-          # Keep topic-search photos only; unverified social thumbnails caused unrelated
-          # close-ups to become the main visual in earlier renders.
-          all_images = sorted(set(glob.glob("output/media/image_*") + glob.glob("output/media/india_gate_landmark.jpg")))
-          # Do not use the old CJP logo/title-card fallback as footage. It labels
-          # CJP incorrectly and creates a static text screen instead of news visuals.
-          cjp_images = []
+              print("STORY_MATCHED_BROLL_AS_ILLUSTRATIVE_ONLY:", len(video_clips))
+          all_images = sorted(set(
+              glob.glob("output/media/image_*")
+              + glob.glob("output/media/india_gate_landmark.jpg")
+          ))
           other_images = [
               path for path in all_images
               if os.path.basename(path) != "image_00_cjp.png"
           ]
-          # Prefer the verified India Gate landmark immediately after the reporter;
-          # remaining topic images follow it, with unrelated protest stock rejected above.
-          other_images = sorted(
-              other_images,
-              key=lambda path: (0 if os.path.basename(path) == "india_gate_landmark.jpg" else 1, path)
-          )
-          images = cjp_images + other_images[:4]
+          if not any(term in topic_text for term in ("india gate", "इंडिया गेट")):
+              other_images = [
+                  path for path in other_images
+                  if os.path.basename(path) != "india_gate_landmark.jpg"
+              ]
+          images = other_images[:6]
           avatar_path = "output/media/reporter_intro.mp4"
           stock_reporter_path = "output/media/reporter_stock_intro.mp4"
-          # Prefer the actual lip-synced avatar; if generation fails, use a real moving reporter clip with voice-over.
-          assets = [("logo", path) for path in cjp_images]
+          base_assets = []
           if os.path.exists("output/sadtalker_success.txt") and os.path.exists(avatar_path):
-              assets.append(("reporter", avatar_path))
-              print("VISUAL_MODE=full-screen-talking-reporter-intro-then-B-roll")
+              base_assets.append(("reporter", avatar_path))
+              print("VISUAL_MODE=talking-avatar-intro-then-topic-storyboard")
           elif os.path.exists(stock_reporter_path) and os.path.exists("output/media/reporter_stock_intro_source.txt"):
-              assets.append(("reporter", stock_reporter_path))
+              base_assets.append(("reporter", stock_reporter_path))
               print("VISUAL_MODE=real-moving-reporter-with-voiceover-no-lipsync-claim")
-          assets += [("video", path) for path in video_clips] + [
-              ("image", path) for path in other_images[:4]
-          ]
-
-          if not assets:
+          base_assets += [("video", path) for path in video_clips]
+          base_assets += [("image", path) for path in images]
+          if not base_assets:
               raise RuntimeError("No image or video visuals found.")
-          # If no presenter is available, allow actual moving public-affairs B-roll as a clearly
-          # illustrative voice-over preview. Never label this as a reporter or lip-synced avatar.
-          if not any(kind in ("reporter", "video") for kind, _path in assets):
+          if not any(kind in ("reporter", "video") for kind, _path in base_assets):
               raise RuntimeError("No moving video footage or talking avatar is available; refusing a still-photo-only preview.")
-          if not any(kind == "reporter" for kind, _path in assets):
+          if not any(kind == "reporter" for kind, _path in base_assets):
               print("VISUAL_MODE=illustrative-moving-B-roll-with-voiceover-no-reporter-no-lipsync")
-          if len(assets) < 2:
-              raise RuntimeError("No independent B-roll/photo was available. Refusing to loop the same reporter footage over the full narration; add topic visuals and retry.")
+          if len(base_assets) < 2:
+              raise RuntimeError("Need at least two distinct visual assets; refusing a single-image video.")
 
-          # Start with CJP logo card, then reporter, then India-focused topic footage/photos.
-          transition_duration = 0.45
-          cjp_first = (
-              len(assets) > 0 and assets[0][0] == "image"
-              and os.path.basename(assets[0][1]) == "image_00_cjp.png"
-          )
-          reporter_index = next(
-              (i for i, item in enumerate(assets) if item[0] == "reporter"), None
-          )
-          if cjp_first and reporter_index == 1 and len(assets) > 2:
-              cjp_duration = min(3.0, max(1.5, duration * 0.06))
-              reporter_duration = min(7.5, max(3.0, duration * 0.2))
-              remaining_duration = (
-                  duration + transition_duration * (len(assets) - 1)
-                  - cjp_duration - reporter_duration
-              ) / (len(assets) - 2)
-              segment_durations = [cjp_duration, reporter_duration] + [
-                  remaining_duration for _ in assets[2:]
-              ]
-          elif reporter_index == 0 and len(assets) > 1:
-              reporter_duration = min(7.5, max(3.0, duration * 0.2))
-              remaining_duration = (
-                  duration + transition_duration * (len(assets) - 1) - reporter_duration
-              ) / (len(assets) - 1)
-              segment_durations = [reporter_duration] + [
-                  remaining_duration for _ in assets[1:]
-              ]
-          else:
-              segment_duration = (
-                  duration + transition_duration * (len(assets) - 1)
-              ) / len(assets)
-              segment_durations = [segment_duration] * len(assets)
+          # Short cinematic cuts: ~3.5s for stills, ~4.5s for moving footage,
+          # and one short reporter opening. Reuse is only a last resort to fill narration.
+          transition_duration = 0.28
+          assets = []
+          segment_durations = []
+          elapsed = 0.0
+          scene_index = 0
+          while elapsed < duration + transition_duration * 3:
+              candidate_index = scene_index % len(base_assets)
+              kind, path = base_assets[candidate_index]
+              # Never replay the talking reporter; keep it as a brief opening shot.
+              if kind == "reporter" and scene_index >= len(base_assets):
+                  scene_index += 1
+                  if scene_index > len(base_assets) * 3:
+                      break
+                  continue
+              if kind == "reporter":
+                  segment_duration = min(5.0, max(3.0, duration * 0.09))
+              elif kind == "video":
+                  segment_duration = 4.2
+              else:
+                  segment_duration = 3.4
+              assets.append((kind, path))
+              segment_durations.append(segment_duration)
+              elapsed += segment_duration - (transition_duration if assets else 0)
+              scene_index += 1
+              if scene_index > 60:
+                  break
+          if len(assets) < 2:
+              raise RuntimeError("Storyboard has fewer than two scenes.")
+          print("CINEMATIC_STORYBOARD_SCENES:", len(assets))
+          print("CINEMATIC_CUT_LENGTHS_SECONDS:", ",".join(f"{x:.1f}" for x in segment_durations))
+          print("TOPIC_VIDEO_CLIPS:", len(video_clips), "TOPIC_IMAGES:", len(images))
 
           args = ["ffmpeg", "-y"]
           for (kind, path), segment_duration in zip(assets, segment_durations):
