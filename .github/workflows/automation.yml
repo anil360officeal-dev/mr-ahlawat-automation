@@ -182,12 +182,120 @@ jobs:
               except Exception as e:
                   search_failed += 1
                   print("X_SEARCH_WARNING:", query, repr(e))
-          if not items and search_failed == len(search_queries):
-              print("X_SEARCH_UNAVAILABLE: all searches failed")
+          # X search has recently returned HTTP 402. Add indexed public Facebook/Instagram
+          # results as discovery leads, then verify every selected claim against trusted news.
+          social_queries = [
+              ("facebook", 'site:facebook.com ("CJP" OR "Abhijeet Dipke" OR "Ashutosh Ranka" OR "Saurav Das")'),
+              ("instagram", 'site:instagram.com ("CJP" OR "Abhijeet Dipke" OR "Ashutosh Ranka" OR "Saurav Das")'),
+              ("facebook", 'site:facebook.com India (BJP OR protest OR "Supreme Court" OR election)'),
+              ("instagram", 'site:instagram.com India (BJP OR protest OR "Supreme Court" OR election)'),
+          ]
+          social_leads_added = 0
+          for platform, query in social_queries:
+              rss_url = (
+                  "https://news.google.com/rss/search?q="
+                  + urllib.parse.quote(query)
+                  + "&hl=en-IN&gl=IN&ceid=IN:en"
+              )
+              try:
+                  req = urllib.request.Request(
+                      rss_url, headers={"User-Agent": "Mozilla/5.0 MrAhlawatShorts/1.0"}
+                  )
+                  with urllib.request.urlopen(req, timeout=20) as response:
+                      root = ET.fromstring(response.read())
+                  for item in root.findall(".//item")[:12]:
+                      title = (item.findtext("title") or "").strip()
+                      link = (item.findtext("link") or "").strip()
+                      source_node = item.find("source")
+                      source_url = source_node.get("url", "") if source_node is not None else ""
+                      source_domain = (urlparse(source_url or link).hostname or "").lower()
+                      expected_domain = "facebook.com" if platform == "facebook" else "instagram.com"
+                      if not (source_domain == expected_domain or source_domain.endswith("." + expected_domain)):
+                          continue
+                      pub_date = item.findtext("pubDate") or ""
+                      try:
+                          published = parsedate_to_datetime(pub_date)
+                          if published.tzinfo is None:
+                              published = published.replace(tzinfo=timezone.utc)
+                          created_at = published.astimezone(timezone.utc).isoformat()
+                      except Exception:
+                          continue
+                      lead_id = "indexed-" + platform + "-" + str(abs(hash(link or title)))
+                      if not title or not link or lead_id in known_ids:
+                          continue
+                      known_ids.add(lead_id)
+                      items.append({
+                          "id": lead_id,
+                          "text": title,
+                          "url": link,
+                          "createdAt": created_at,
+                          "sourceType": "Google News indexed public " + platform + " result"
+                      })
+                      social_leads_added += 1
+              except Exception as e:
+                  print("SOCIAL_INDEX_SEARCH_WARNING:", platform, repr(e))
+
+          # If social-platform indexing is empty too, use fresh trusted-news RSS as the last
+          # discovery fallback. These are news articles, not mislabelled Facebook/Instagram posts.
+          news_leads_added = 0
+          if not items:
+              fallback_queries = [
+                  '"CJP" "Abhijeet Dipke"',
+                  '"Ashutosh Ranka" OR "Saurav Das"',
+                  'India protest Supreme Court election latest',
+              ]
+              for query in fallback_queries:
+                  rss_url = (
+                      "https://news.google.com/rss/search?q="
+                      + urllib.parse.quote(query)
+                      + "&hl=en-IN&gl=IN&ceid=IN:en"
+                  )
+                  try:
+                      req = urllib.request.Request(
+                          rss_url, headers={"User-Agent": "Mozilla/5.0 MrAhlawatShorts/1.0"}
+                      )
+                      with urllib.request.urlopen(req, timeout=20) as response:
+                          root = ET.fromstring(response.read())
+                      for item in root.findall(".//item")[:12]:
+                          title = (item.findtext("title") or "").strip()
+                          link = (item.findtext("link") or "").strip()
+                          source_node = item.find("source")
+                          source_url = source_node.get("url", "") if source_node is not None else ""
+                          domain = (urlparse(source_url or link).hostname or "").lower()
+                          if not any(domain == d or domain.endswith("." + d) for d in trusted_domains):
+                              continue
+                          pub_date = item.findtext("pubDate") or ""
+                          try:
+                              published = parsedate_to_datetime(pub_date)
+                              if published.tzinfo is None:
+                                  published = published.replace(tzinfo=timezone.utc)
+                              created_at = published.astimezone(timezone.utc).isoformat()
+                          except Exception:
+                              continue
+                          lead_id = "news-rss-" + str(abs(hash(link or title)))
+                          if not title or not link or lead_id in known_ids:
+                              continue
+                          known_ids.add(lead_id)
+                          items.append({
+                              "id": lead_id,
+                              "text": title,
+                              "url": link,
+                              "createdAt": created_at,
+                              "sourceType": "Google News RSS lead"
+                          })
+                          news_leads_added += 1
+                  except Exception as e:
+                      print("NEWS_RSS_FALLBACK_WARNING:", query, repr(e))
+
+          print("SOCIAL_INDEXED_LEADS_ADDED:", social_leads_added)
+          print("TRUSTED_NEWS_RSS_LEADS_ADDED:", news_leads_added)
+          if not items:
+              if search_failed == len(search_queries):
+                  print("X_SEARCH_UNAVAILABLE: X and fallback discovery sources returned no usable leads")
               output("should_run", "false")
               raise SystemExit(0)
 
-          print("INDIA_ISSUE_X_POSTS_RETURNED:", len(items))
+          print("INDIA_ISSUE_X_AND_FALLBACK_LEADS_RETURNED:", len(items))
           now = datetime.now(timezone.utc)
           selected = None
 
@@ -223,12 +331,12 @@ jobs:
                       except ValueError:
                           post_time = None
               if post_time is None:
-                  print("SKIP_X_POST_WITH_UNPARSEABLE_DATE:", raw_created[:100])
+                  print("SKIP_SOCIAL_OR_NEWS_LEAD_WITH_UNPARSEABLE_DATE:", raw_created[:100])
                   continue
               if post_time.tzinfo is None:
                   post_time = post_time.replace(tzinfo=timezone.utc)
               if now - post_time.astimezone(timezone.utc) > timedelta(hours=72) or post_time > now + timedelta(minutes=10):
-                  print("SKIP_STALE_OR_FUTURE_X_POST:", raw_created[:100])
+                  print("SKIP_STALE_OR_FUTURE_SOCIAL_OR_NEWS_LEAD:", raw_created[:100])
                   continue
               post_id = str(post.get("id", "")).strip()
               text = str(post.get("text", "")).strip()
