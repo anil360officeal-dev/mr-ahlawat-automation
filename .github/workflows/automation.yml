@@ -2022,14 +2022,14 @@ jobs:
           )
           images = cjp_images + other_images[:4]
           reporter_path = "output/media/reporter_intro.mp4"
-          # Always keep relevant pictures and moving B-roll as the full-screen background.
-          # The real AI male avatar is layered on top only after SadTalker succeeds.
+          # Full-screen talking reporter first, then full-screen topic visuals.
           assets = [("logo", path) for path in cjp_images]
+          if os.path.exists("output/sadtalker_success.txt") and os.path.exists(reporter_path):
+              assets.append(("reporter", reporter_path))
+              print("VISUAL_MODE=full-screen-talking-reporter-intro-then-B-roll")
           assets += [("video", path) for path in video_clips] + [
               ("image", path) for path in other_images[:4]
           ]
-          if os.path.exists("output/sadtalker_success.txt") and os.path.exists(reporter_path):
-              print("VISUAL_MODE=moving-background-with-AI-female-presenter-overlay")
 
           if not assets:
               raise RuntimeError("No image or video visuals found.")
@@ -2139,12 +2139,12 @@ jobs:
           PY
 
           if [ -s output/sadtalker_success.txt ] && [ -s output/media/reporter_intro.mp4 ]; then
-            ffmpeg -y \
-              -i output/visuals.mp4 -i output/voiceover.mp3 \
-              -loop 1 -framerate 30 -i output/headline_overlay.png \
-              -stream_loop -1 -i output/media/reporter_intro.mp4 \
-              -filter_complex "[0:v]drawbox=x=0:y=0:w=1080:h=112:color=0x071426@0.80:t=fill,drawbox=x=0:y=108:w=14:h=112:color=0xE53935:t=fill,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='MR AHLAWAT':fontcolor=white:fontsize=42:x=42:y=27:shadowcolor=black:shadowx=2:shadowy=2,drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:text='GROUND REPORT':fontcolor=0x00D9FF:fontsize=25:x=42:y=76[base];[base][2:v]overlay=x=0:y=120:format=auto[head];[3:v]scale=480:854:force_original_aspect_ratio=increase,crop=480:854,setsar=1[avatar];[head][avatar]overlay=x=600:y=360:shortest=1[withavatar];[withavatar]subtitles=filename=output/captions.ass[v]" \
-              -map "[v]" -map 1:a:0 -c:v libx264 -preset veryfast -pix_fmt yuv420p -c:a aac -b:a 128k -tune stillimage -shortest output/mr-ahlawat-short.mp4
+            # The talking reporter is already the first full-screen segment in visuals.mp4.
+            # Keep the screen clean: no picture-in-picture avatar and no large top banner.
+            ffmpeg -y -i output/visuals.mp4 -i output/voiceover.mp3 \
+              -vf "subtitles=filename=output/captions.ass" \
+              -map 0:v:0 -map 1:a:0 -c:v libx264 -preset veryfast -pix_fmt yuv420p \
+              -c:a aac -b:a 128k -shortest output/mr-ahlawat-short.mp4
           else
             echo "ERROR: AI male avatar missing; do not render fake avatar preview."
             exit 1
