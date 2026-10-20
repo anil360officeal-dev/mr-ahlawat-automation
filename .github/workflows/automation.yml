@@ -2243,7 +2243,7 @@ jobs:
           headline = re.sub(r"\s+", " ", metadata.get("title", "MR AHLAWAT NEWS")).strip()
           headline = headline.replace("\\", " ").replace("'", "’")
           ticker = re.sub(r"\s+", " ", metadata.get("description", script)).strip()
-          ticker = ticker.replace("\\", " ").replace("'", "’')
+          ticker = ticker.replace("\\", " ").replace("'", "’")
           with open("output/headline.txt", "w", encoding="utf-8") as f:
               f.write(headline[:90])
           with open("output/ticker.txt", "w", encoding="utf-8") as f:
