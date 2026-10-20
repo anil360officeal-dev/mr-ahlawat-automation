@@ -2330,9 +2330,10 @@ jobs:
                   segment_duration = 4.2
               else:
                   segment_duration = 3.4
+              first_scene = not assets
               assets.append((kind, path))
               segment_durations.append(segment_duration)
-              elapsed += segment_duration - (transition_duration if assets else 0)
+              elapsed += segment_duration - (0 if first_scene else transition_duration)
               scene_index += 1
               if scene_index > 60:
                   break
@@ -2373,12 +2374,13 @@ jobs:
                       f"setsar=1,fps=30,format=yuv420p,settb=AVTB[{label}]"
                   )
               else:
+                  pan_x = "(iw-iw/zoom)*min(on/100,1)" if i % 2 == 0 else "(iw-iw/zoom)*(1-min(on/100,1))"
                   filters.append(
                       f"[{i}:v]scale=1080:1920:"
                       f"force_original_aspect_ratio=increase,"
                       f"crop=1080:1920,setsar=1,fps=30,"
-                      f"zoompan=z='min(zoom+0.0005,1.08)':"
-                      f"x='iw/2-(iw/zoom/2)':"
+                      f"zoompan=z='min(zoom+0.0007,1.10)':"
+                      f"x='{pan_x}':"
                       f"y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps=30,"
                       f"eq=contrast=1.04:saturation=1.08:brightness=-0.01,"
                       f"unsharp=5:5:0.35:3:3:0.12,"
