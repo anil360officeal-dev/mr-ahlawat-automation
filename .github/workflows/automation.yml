@@ -96,6 +96,7 @@ jobs:
           import json
           import os
           import re
+          import hashlib
           import time
           import urllib.parse
           import urllib.request
@@ -220,7 +221,7 @@ jobs:
                           created_at = published.astimezone(timezone.utc).isoformat()
                       except Exception:
                           continue
-                      lead_id = "indexed-" + platform + "-" + str(abs(hash(link or title)))
+                      lead_id = "indexed-" + platform + "-" + hashlib.sha256((link or title).encode("utf-8")).hexdigest()[:20]
                       if not title or not link or lead_id in known_ids:
                           continue
                       known_ids.add(lead_id)
