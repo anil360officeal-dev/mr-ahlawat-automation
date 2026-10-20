@@ -2461,12 +2461,15 @@ jobs:
               fail("Voice-over WAV is missing or suspiciously small.")
           avatar_ready = os.path.isfile("output/sadtalker_success.txt") and os.path.isfile("output/media/reporter_intro.mp4")
           stock_ready = os.path.isfile("output/media/reporter_stock_intro.mp4") and os.path.isfile("output/media/reporter_stock_intro_source.txt")
-          if not avatar_ready and not stock_ready:
-              fail("No moving reporter video was generated. Refusing a still-photo-only preview.")
+          broll_clips = sorted(__import__("glob").glob("output/media/clip_*.mp4"))
           if avatar_ready:
               print("REPORTER_QUALITY_MODE: talking avatar with generated lip-sync")
-          else:
+          elif stock_ready:
               print("REPORTER_QUALITY_MODE: real moving reporter with Hindi voice-over; lip-sync not claimed")
+          elif broll_clips:
+              print(f"VISUAL_QUALITY_MODE: illustrative moving B-roll with Hindi voice-over; no reporter/lip-sync claim ({len(broll_clips)} clips)")
+          else:
+              fail("No moving reporter or B-roll video was generated. Refusing a still-photo-only preview.")
           if not os.path.isfile(captions):
               fail("Hindi captions file is missing.")
           with open(captions, encoding="utf-8") as f:
