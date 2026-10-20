@@ -971,12 +971,28 @@ jobs:
                       if not title or title in seen:
                           continue
                       title_lower = title.lower()
-                      if is_protest_story and not any(term in title_lower for term in (
-                          "india", "indian", "new delhi", "jantarmantar", "parliament",
-                          "abhijeet", "election commission", "india gate"
-                      )):
-                          print("SKIP_NON_INDIA_COMMONS_IMAGE:", title[:160])
-                          continue
+                      if is_protest_story:
+                          # Do not accept a random photo merely because its filename contains "India".
+                          # Keep only topic/event-relevant people, protest, police, CJP, or Delhi assets.
+                          topic_terms = [
+                              term for term in (
+                                  "cjp", "cockroach janata", "abhijeet", "dipke", "ashu",
+                                  "saurav", "gyanesh", "election commission", "jantarmantar",
+                                  "jantar mantar", "protest", "demonstration", "rally",
+                                  "dharna", "andolan", "police", "barricade", "parliament",
+                                  "new delhi", "india gate"
+                              ) if term in (topic + " " + title).lower()
+                          ]
+                          visual_terms = (
+                              "cjp", "cockroach janata", "abhijeet", "dipke", "ashu",
+                              "saurav", "gyanesh", "election commission", "jantarmantar",
+                              "jantar mantar", "protest", "demonstration", "rally",
+                              "dharna", "andolan", "police", "barricade", "parliament",
+                              "new delhi", "india gate"
+                          )
+                          if not any(term in title_lower for term in visual_terms):
+                              print("SKIP_UNRELATED_PROTEST_IMAGE:", title[:160])
+                              continue
                       seen.add(title)
 
                       detail = session.get(
@@ -1544,19 +1560,24 @@ jobs:
           session.headers.update({"User-Agent": "MrAhlawatShortsAutomation/1.0 (video sourcing)"})
 
           # Multiple searches, less brittle metadata filters. Never use a still image as video.
+          # Only seek an outdoor Indian field-report look; avoid generic anchors and studio portraits.
           pixabay_queries = [
-              "indian reporter microphone", "indian journalist interview",
-              "indian news reporter", "street reporter microphone",
-              "journalist interviewing people", "press reporter microphone",
-              "india protest interview", "reporter speaking camera"
+              "Indian street reporter microphone outdoor",
+              "India protest field reporter microphone",
+              "Indian journalist street interview crowd",
+              "Delhi protest reporter microphone",
+              "Indian reporter outdoor interview"
           ]
           pexels_queries = [
-              "Indian reporter microphone", "journalist interview",
-              "reporter speaking microphone", "street interview India",
-              "news reporter crowd", "press interview"
+              "Indian street reporter outdoor microphone",
+              "India protest field reporter",
+              "Indian journalist street interview crowd",
+              "Delhi protest street interview",
+              "outdoor reporter microphone India"
           ]
           female_terms = ("woman", "women", "female", "girl", "blonde", "brunette", "lady", "actress", "beauty", "makeup")
           role_terms = ("reporter", "journalist", "interview", "microphone", "news", "press", "correspondent", "interviewing")
+          outdoor_india_terms = ("india", "indian", "delhi", "street", "outdoor", "outside", "protest", "rally", "crowd", "roadside", "field report")
           def convert_to_intro(url, source_label):
               temp = os.path.join(media_dir, "reporter_candidate_source")
               try:
@@ -1604,6 +1625,9 @@ jobs:
                           if any(word in tags for word in female_terms):
                               continue
                           if not any(word in tags for word in role_terms):
+                              continue
+                          if not any(word in tags for word in outdoor_india_terms):
+                              print("SKIP_GENERIC_OR_INDOOR_REPORTER_CLIP:", tags[:160])
                               continue
                           if not any(word in tags for word in ("microphone", "mic")):
                               print("SKIP_REPORTER_VIDEO_WITHOUT_MIC_TAG:", tags[:140])
