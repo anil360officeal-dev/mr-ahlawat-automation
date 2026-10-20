@@ -2485,6 +2485,14 @@ jobs:
           fi
 
 
+      - name: Create visual review sheet
+        if: always() && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false' && hashFiles('output/mr-ahlawat-short.mp4') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p output/review
+          ffmpeg -y -v error -i output/mr-ahlawat-short.mp4 -vf "fps=1/4,scale=270:480,tile=2x3:padding=12:margin=12:color=black" -frames:v 1 output/preview-contact-sheet.jpg
+          test -s output/preview-contact-sheet.jpg && echo "VISUAL_REVIEW_SHEET_CREATED=output/preview-contact-sheet.jpg"
+
       - name: Validate rendered Short before upload
         id: quality
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
@@ -2524,6 +2532,23 @@ jobs:
               fail("No moving reporter or B-roll video was generated. Refusing a still-photo-only preview.")
           if not os.path.isfile(captions):
               fail("Hindi captions file is missing.")
+          # Catch the two recent regressions before an artifact can be approved:
+          # absent headline overlay and missing/empty caption timeline.
+          from PIL import Image
+          overlay_path = "output/headline_overlay.png"
+          if not os.path.isfile(overlay_path):
+              fail("Transparent headline text overlay file is missing.")
+          overlay = Image.open(overlay_path).convert("RGBA")
+          if overlay.getchannel("A").getbbox() is None:
+              fail("Headline overlay is fully transparent; no headline text would appear.")
+          groups_path = "output/caption_groups.json"
+          if not os.path.isfile(groups_path):
+              fail("Caption timing JSON is missing.")
+          with open(groups_path, encoding="utf-8") as gf:
+              caption_groups = json.load(gf)
+          if len(caption_groups) < 3 or not any(str(g.get("text", "")).strip() for g in caption_groups):
+              fail("Caption timing JSON has no usable subtitle text.")
+          print("TEXT_OVERLAY_QA_PASSED: headline has visible text; subtitle timeline has", len(caption_groups), "groups")
           with open(captions, encoding="utf-8") as f:
               caption_text = f.read()
           caption_count = caption_text.count("Dialogue:")
