@@ -2286,14 +2286,24 @@ jobs:
               "जंतर मंतर", "प्रदर्शन", "धरना", "आंदोलन", "cjp",
               "ashu", "saurav", "abhijeet dipke", "gyanesh kumar"
           ))
-          video_clips = sorted(glob.glob("output/media/clip_*.mp4"))
-          # A maximum of five distinct clips; all are treated as illustrative unless
-          # the source itself was verified as the exact event.
-          video_clips = video_clips[:5]
+          # New edit strategy: prefer actual moving clips recovered from the selected
+          # public X post / relevant public social posts, then use licensed-source B-roll.
+          # Social clips are included only in preview; source/rights are listed in attribution.
+          social_clips = sorted(glob.glob("output/media/social_clip_*.mp4"))
+          licensed_clips = sorted(glob.glob("output/media/clip_*.mp4"))
+          video_clips = (social_clips + licensed_clips)[:7]
+          if social_clips:
+              print("REAL_SOCIAL_POST_FOOTAGE_QUEUED_FOR_PREVIEW:", len(social_clips))
+          if licensed_clips:
+              print("LICENSED_OR_STOCK_BROLL_QUEUED_FOR_PREVIEW:", len(licensed_clips))
+          # Public-affairs B-roll is not labelled as footage of the exact event
+          # unless it came from the selected/source post itself.
           if public_affairs_story and video_clips:
-              print("STORY_MATCHED_BROLL_AS_ILLUSTRATIVE_ONLY:", len(video_clips))
+              print("PUBLIC_AFFAIRS_VIDEO_ASSETS_FOR_REVIEWED_PREVIEW:", len(video_clips))
+              print("SOURCE_AND_USAGE_NOTES_SAVED_IN_OUTPUT_MEDIA_ATTRIBUTION")
           all_images = sorted(set(
               glob.glob("output/media/image_*")
+              + glob.glob("output/media/social_image_*")
               + glob.glob("output/media/india_gate_landmark.jpg")
           ))
           other_images = [
