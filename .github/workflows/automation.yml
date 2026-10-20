@@ -2092,8 +2092,10 @@ jobs:
         run: |
           if [ -s output/media/reporter_stock_intro.mp4 ] && [ -s output/media/reporter_stock_intro_source.txt ]; then
             echo "REPORTER_READY: moving reporter footage with Hindi voice-over; no lip-sync claim."
+          elif compgen -G "output/media/clip_*.mp4" > /dev/null; then
+            echo "REPORTER_MISSING_BROLL_FALLBACK_AVAILABLE: moving illustrative footage with Hindi voice-over; no reporter/lip-sync claim."
           else
-            echo "REPORTER_MISSING: no suitable moving reporter clip; preview should fail rather than use unrelated stills."
+            echo "REPORTER_MISSING: no suitable moving reporter or B-roll video; still-only preview remains blocked."
           fi
 
       - name: Create Ground Report video with Hindi captions
