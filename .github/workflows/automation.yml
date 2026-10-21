@@ -24,9 +24,9 @@ on:
         default: true
         type: boolean
       generate_ai_images:
-        description: "Generate one AI editorial illustration using OpenAI Images API (may incur API charges)"
+        description: "Optional AI illustration (may incur API charges); keep disabled for real protest/news photos"
         required: true
-        default: true
+        default: false
         type: boolean
       use_openai_tts:
         description: "Prefer natural expressive OpenAI Hindi narration when OPENAI_API_KEY is configured (API charges may apply)"
