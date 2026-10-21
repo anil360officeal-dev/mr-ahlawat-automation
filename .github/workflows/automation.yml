@@ -28,6 +28,11 @@ on:
         required: true
         default: true
         type: boolean
+      use_openai_tts:
+        description: "Prefer natural expressive OpenAI Hindi narration when OPENAI_API_KEY is configured (API charges may apply)"
+        required: true
+        default: true
+        type: boolean
   # Temporarily paused: run previews manually until the talking-avatar output passes review.
   # Re-enable scheduled news builds after the preview pipeline is verified.
   # schedule:
@@ -757,6 +762,9 @@ jobs:
       - name: Generate Hindi male voice-over
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
+          env:
+            OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+            USE_OPENAI_TTS: ${{ inputs.use_openai_tts }}
           set -e
           mkdir -p models output
           python - <<'PY'
@@ -766,8 +774,37 @@ jobs:
           if not script:
               raise RuntimeError("AI script is empty")
           source_audio = None
+          # Prefer a natural expressive OpenAI voice when explicitly enabled and the API key exists.
+          # If the API is unavailable, continue to free Edge-TTS and offline Piper without failing the build.
+          if os.environ.get("USE_OPENAI_TTS", "true").lower() == "true" and os.environ.get("OPENAI_API_KEY", "").strip():
+              try:
+                  import requests
+                  response = requests.post(
+                      "https://api.openai.com/v1/audio/speech",
+                      headers={"Authorization": "Bearer " + os.environ["OPENAI_API_KEY"].strip(), "Content-Type": "application/json"},
+                      json={
+                          "model": "gpt-4o-mini-tts",
+                          "voice": "cedar",
+                          "input": script,
+                          "instructions": "Speak in natural, clear Hindi as an experienced Indian male field reporter. Warm, energetic, expressive and conversational, with realistic pauses and emphasis. Pronounce Hindi names carefully. Do not sound robotic, sleepy, over-dramatic, or like a TV studio announcer. Do not add words that are not in the script.",
+                          "response_format": "mp3"
+                      },
+                      timeout=150
+                  )
+                  if response.status_code == 200 and len(response.content) > 1000:
+                      with open("output/voiceover-openai.mp3", "wb") as audio_file:
+                          audio_file.write(response.content)
+                      source_audio = "output/voiceover-openai.mp3"
+                      print("VOICE_ENGINE=OpenAI-gpt-4o-mini-tts-cedar")
+                  else:
+                      print("OPENAI_TTS_WARNING:", response.status_code, response.text[:500])
+              except Exception as openai_error:
+                  print("OPENAI_TTS_UNAVAILABLE; falling back to free voices:", repr(openai_error))
+          elif os.environ.get("USE_OPENAI_TTS", "true").lower() == "true":
+              print("OPENAI_TTS_SKIPPED: OPENAI_API_KEY secret not configured; using free voice fallback.")
           # Try multiple Hindi neural voices with bounded retries; only fall back to Piper if all fail.
-          try:
+          if source_audio is None:
+              try:
               import asyncio, edge_tts
               async def make_neural_voice():
                   errors = []
@@ -790,9 +827,9 @@ jobs:
                               errors.append(f"{voice} attempt {attempt+1}: {exc!r}")
                               await asyncio.sleep(1.5)
                   raise RuntimeError("All Hindi neural voices failed: " + " | ".join(errors))
-              source_audio = asyncio.run(make_neural_voice())
-          except Exception as edge_error:
-              print("NEURAL_HINDI_VOICE_UNAVAILABLE; using offline Piper fallback:", repr(edge_error))
+                  source_audio = asyncio.run(make_neural_voice())
+              except Exception as edge_error:
+                  print("NEURAL_HINDI_VOICE_UNAVAILABLE; using offline Piper fallback:", repr(edge_error))
           if source_audio is None:
               # Use the Rohan Hindi male model as the offline fallback; neural Edge voices
               # remain first choice when the runner can reach the service.
