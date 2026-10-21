@@ -23,6 +23,11 @@ on:
         required: true
         default: true
         type: boolean
+      generate_ai_video:
+        description: "Generate one 10-second Gemini Omni Flash video clip (paid API usage)"
+        required: true
+        default: false
+        type: boolean
   # Temporarily paused: run previews manually until the talking-avatar output passes review.
   # Re-enable scheduled news builds after the preview pipeline is verified.
   # schedule:
@@ -2073,6 +2078,115 @@ jobs:
           else
             echo "REPORTER_MISSING: no suitable moving reporter or B-roll video; still-only preview remains blocked."
           fi
+
+      - name: Generate optional 10-second Gemini AI B-roll (paid; preview only)
+        if: inputs.generate_ai_video == true && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SHORT_TOPIC: ${{ steps.cjp.outputs.topic || inputs.topic || 'CJP से जुड़ी ताज़ा और सत्यापित दिल्ली-NCR खबर' }}
+          CONTENT_MODE: ${{ inputs.content_mode || 'news' }}
+        timeout-minutes: 20
+        run: |
+          python - <<'PY'
+          import base64, json, os, re, time
+          from pathlib import Path
+          import requests
+
+          key = os.environ.get("GEMINI_API_KEY", "").strip()
+          if not key:
+              raise SystemExit("GEMINI_API_KEY secret is missing; no video request was sent.")
+          topic = os.environ.get("SHORT_TOPIC", "Indian public-interest story").strip()
+          mode = os.environ.get("CONTENT_MODE", "news").strip().lower()
+          if mode == "shayari":
+              scene = "cinematic realistic Indian street at golden hour, thoughtful young adult walking past old city walls, natural handheld camera movement"
+          elif mode == "comedy":
+              scene = "realistic everyday Indian neighbourhood street, a light-hearted harmless everyday moment, natural handheld documentary camera movement"
+          else:
+              scene = "realistic Delhi-NCR public street scene with natural handheld ground-report camera movement, pedestrians and distant police barricades only if contextually relevant"
+          prompt = (
+              "Create one continuous 10-second vertical 9:16 photorealistic illustrative B-roll clip for a Hindi short video about: "
+              + topic + ". Scene direction: " + scene + ". "
+              "Natural Indian daylight, believable motion, documentary camera, realistic faces in the background, no studio, no TV graphics, "
+              "no text, no captions, no logos, no watermarks, no fabricated identifiable public figures, no impersonation, no fake evidence. "
+              "This is illustrative B-roll, not footage of a specific real event. Do not depict a specific named person."
+          )
+          base = "https://generativelanguage.googleapis.com/v1beta"
+          response = requests.post(
+              base + "/interactions",
+              params={"key": key},
+              headers={"Content-Type": "application/json"},
+              json={
+                  "model": "gemini-omni-1.1-flash",
+                  "input": prompt,
+                  "response_format": {
+                      "type": "video",
+                      "delivery": "uri",
+                      "aspect_ratio": "9:16",
+                      "resolution": "720p"
+                  }
+              },
+              timeout=180
+          )
+          if not response.ok:
+              print("GEMINI_VIDEO_HTTP_ERROR:", response.status_code, response.text[:1500])
+              raise SystemExit("Gemini video generation request failed.")
+          data = response.json()
+          out = Path("output/media")
+          out.mkdir(parents=True, exist_ok=True)
+          target = out / "clip_00_gemini_ai.mp4"
+
+          video = data.get("output_video")
+          if not video:
+              for step in data.get("steps", []):
+                  if step.get("type") == "model_output":
+                      for item in step.get("content", []):
+                          if item.get("type") == "video" or item.get("mime_type") == "video/mp4":
+                              video = item
+                              break
+                  if video:
+                      break
+          if not video:
+              print("GEMINI_VIDEO_RESPONSE_KEYS:", sorted(data.keys()))
+              raise SystemExit("Gemini response did not contain a video output.")
+          if video.get("data"):
+              target.write_bytes(base64.b64decode(video["data"]))
+          elif video.get("uri"):
+              match = re.search(r"/files/([^/:?]+)", video["uri"])
+              if not match:
+                  raise SystemExit("Could not identify Gemini video file from returned URI.")
+              file_id = match.group(1)
+              deadline = time.time() + 900
+              while True:
+                  status = requests.get(base + "/files/" + file_id, params={"key": key}, timeout=60)
+                  if not status.ok:
+                      print("GEMINI_VIDEO_STATUS_ERROR:", status.status_code, status.text[:1000])
+                      raise SystemExit("Could not check Gemini video processing status.")
+                  state = status.json().get("state", "").upper()
+                  print("GEMINI_VIDEO_STATE:", state or "PROCESSING")
+                  if state == "ACTIVE":
+                      break
+                  if state == "FAILED":
+                      raise SystemExit("Gemini video generation failed during processing.")
+                  if time.time() > deadline:
+                      raise SystemExit("Timed out waiting for Gemini video processing.")
+                  time.sleep(5)
+              download = requests.get(
+                  base + "/files/" + file_id + ":download",
+                  params={"alt": "media", "key": key},
+                  timeout=180
+              )
+              if not download.ok:
+                  print("GEMINI_VIDEO_DOWNLOAD_ERROR:", download.status_code, download.text[:1000])
+                  raise SystemExit("Could not download generated Gemini video.")
+              target.write_bytes(download.content)
+          else:
+              raise SystemExit("Gemini video response had neither inline data nor a file URI.")
+
+          if not target.exists() or target.stat().st_size < 100_000:
+              raise SystemExit("Generated video file is missing or suspiciously small.")
+          print("GEMINI_AI_VIDEO_CREATED:", target, "bytes=", target.stat().st_size)
+          print("GEMINI_AI_VIDEO_NOTE: illustrative B-roll; not evidence of the exact event.")
+          PY
 
       - name: Create Ground Report video with Hindi captions
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
