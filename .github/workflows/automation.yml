@@ -1825,7 +1825,7 @@ jobs:
           with open("output/media/ai_generated_image_note.txt", "w", encoding="utf-8") as f:
               f.write("AI-generated editorial illustration, not documentary evidence of the reported event.\n")
           with open("output/media/attribution.txt", "a", encoding="utf-8") as f:
-              f.write("\\nAI-generated editorial illustration via OpenAI Images API; illustrative only, not evidence of the specific event.\\n")
+              f.write("\nAI-generated editorial illustration via OpenAI Images API; illustrative only, not evidence of the specific event.\n")
           print("AI_EDITORIAL_ILLUSTRATION_CREATED:", path, os.path.getsize(path), "bytes")
           PY
 
