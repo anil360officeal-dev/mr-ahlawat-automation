@@ -2166,13 +2166,24 @@ jobs:
           # SadTalker resolves ./checkpoints relative to the current directory.
           # Run inference from its own repo so it detects the downloaded safetensors.
           cd /tmp/SadTalker
-          /tmp/sadtalker-venv/bin/python inference.py \
+          # Attempt 1: crop-and-resize mode is usually best for a centered headshot.
+          if ! /tmp/sadtalker-venv/bin/python inference.py \
             --driven_audio "$GITHUB_WORKSPACE/output/sadtalker_source/reporter_audio.wav" \
             --source_image "$GITHUB_WORKSPACE/output/sadtalker_source/reporter.jpg" \
             --result_dir "$GITHUB_WORKSPACE/output/sadtalker" \
             --preprocess crop \
             --size 256 \
-            --cpu
+            --cpu; then
+            echo "SADTALKER_PRIMARY_MODE_FAILED; trying alternate full-frame preprocessing."
+            # Attempt 2: alternate preprocessing mode using the same installed model.
+            /tmp/sadtalker-venv/bin/python inference.py \
+              --driven_audio "$GITHUB_WORKSPACE/output/sadtalker_source/reporter_audio.wav" \
+              --source_image "$GITHUB_WORKSPACE/output/sadtalker_source/reporter.jpg" \
+              --result_dir "$GITHUB_WORKSPACE/output/sadtalker_fallback" \
+              --preprocess full \
+              --size 256 \
+              --cpu
+          fi
           cd "$GITHUB_WORKSPACE"
 
           python - <<'PY'
