@@ -1356,6 +1356,12 @@ jobs:
               except Exception as e:
                   print(f"Search warning for '{search_term}': {e}")
           
+          if is_protest_story and saved < 1:
+              raise RuntimeError(
+                  "No verified event/person-specific protest image passed the visual relevance filters. "
+                  "Refusing to build a misleading video from generic stock."
+              )
+
           video_count = 0
           # Best-effort search of publicly indexed Facebook/Instagram posts.
           # yt-dlp is used without login cookies; private/login-gated content is skipped.
@@ -1384,7 +1390,20 @@ jobs:
                       root = ET.fromstring(rss.text)
                       for item in root.findall(".//item"):
                           link = (item.findtext("link") or "").strip()
+                          item_title = (item.findtext("title") or "").lower()
+                          item_desc = (item.findtext("description") or "").lower()
                           if not link:
+                              continue
+                          # Search snippets must identify the actual protest/person story;
+                          # a social-domain URL alone is not enough.
+                          relevant_post_terms = (
+                              "cjp", "abhijeet dipke", "ashutosh ranka", "saurav das",
+                              "sourav das", "gyanesh kumar", "jantar mantar", "jantarmantar",
+                              "protest", "demonstration", "dharna", "andolan", "release order",
+                              "released", "judicial custody", "election commission"
+                          )
+                          if not any(term in (item_title + " " + item_desc) for term in relevant_post_terms):
+                              print("SKIP_SOCIAL_RESULT_WITHOUT_STORY_MATCH:", item_title[:140])
                               continue
                           lower = link.lower()
                           is_fb = "facebook.com/" in lower and any(part in lower for part in ("/reel", "/watch", "/videos/"))
@@ -1776,8 +1795,10 @@ jobs:
           # Additional official free-video source: Pexels API (optional key).
           # Search multiple topic-relevant queries; preserve creator/source attribution.
           pexels_key = os.environ.get("PEXELS_API_KEY", "").strip()
-          if pexels_key:
+          if pexels_key and not is_protest_story:
               pexels_queries = queries[:3] + ["India street crowd", "Indian city traffic", "public demonstration India"]
+          elif pexels_key and is_protest_story:
+              print("PEXELS_PROTEST_BROLL_SKIPPED: generic stock cannot be verified as the actual event")
               for search_term in pexels_queries:
                   if video_count >= 5:
                       break
@@ -1821,6 +1842,9 @@ jobs:
 
           with open("output/media_attribution.txt", "w", encoding="utf-8") as f:
               f.write("\n".join(attribution))
+
+          if is_protest_story and saved < 1:
+              raise RuntimeError("No event/person-specific still image survived filtering; refusing generic visual fallback.")
 
           visuals = [
               name for name in os.listdir("output/media")
