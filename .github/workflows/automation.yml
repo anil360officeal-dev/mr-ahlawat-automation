@@ -54,6 +54,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Check preview configuration (never print secrets)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PREVIEW_ONLY: ${{ inputs.preview_only || github.event_name != 'schedule' }}
+          AI_IMAGES: ${{ inputs.generate_ai_images }}
+          OPENAI_TTS: ${{ inputs.use_openai_tts }}
+        run: |
+          python - <<'PY'
+          import os
+          key = os.environ.get("OPENAI_API_KEY", "").strip()
+          print("PREVIEW_ONLY:", os.environ.get("PREVIEW_ONLY", "true"))
+          print("OPENAI_API_KEY_CONFIGURED:", "yes" if key else "NO")
+          print("AI_IMAGE_REQUESTED:", os.environ.get("AI_IMAGES", "true"))
+          print("OPENAI_TTS_REQUESTED:", os.environ.get("OPENAI_TTS", "true"))
+          if not key:
+              print("ACTION_REQUIRED: add OPENAI_API_KEY in GitHub Settings > Secrets and variables > Actions. The secret value is never printed.")
+          PY
+
       - name: Restore daily upload counter
         uses: actions/cache/restore@v5
         with:
