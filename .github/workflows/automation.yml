@@ -1195,17 +1195,18 @@ jobs:
                           if saved >= 5:
                               break
                           tags = str(hit.get("tags", "")).lower()
-                          if is_protest_story and not any(term in tags for term in (
-                              "india", "indian", "new delhi", "jantarmantar",
-                              "indian parliament", "india gate"
-                          )):
-                              print("SKIP_NON_INDIA_PUBLIC_AFFAIRS_IMAGE:", tags[:160])
-                              continue
-                          if is_protest_story and not any(term in tags for term in (
-                              "protest", "demonstration", "rally", "crowd", "parliament",
-                              "delhi", "flag", "police", "politics", "election", "civic"
-                          )):
-                              print("SKIP_NON_NEWS_RELEVANT_IMAGE:", tags[:160])
+                          if is_protest_story:
+                          # A location tag alone is not evidence of a protest/news image.
+                          # Require the asset's own tags to identify an event, CJP/person, or specific civic action.
+                          event_terms = (
+                              "protest", "protests", "demonstration", "demonstrations",
+                              "rally", "march", "dharna", "andolan", "jantarmantar",
+                              "jantar mantar", "cjp", "abhijeet dipke", "ashutosh ranka",
+                              "saurav das", "sourav das", "gyanesh kumar",
+                              "election commission protest"
+                          )
+                          if not any(term in tags for term in event_terms):
+                              print("SKIP_IMAGE_WITHOUT_EVENT_SPECIFIC_TAGS:", tags[:180])
                               continue
                           if any(term in tags for term in (
                               "ukraine", "russia", "concert", "music festival",
@@ -1288,7 +1289,15 @@ jobs:
                               "dharna", "andolan", "police", "barricade", "parliament",
                               "new delhi", "india gate"
                           )
-                          if not any(term in title_lower for term in visual_terms):
+                          # Don't let generic words such as "police", "das", or "new delhi"
+                          # pass the filter by themselves.
+                          strong_visual_terms = (
+                              "cjp", "cockroach janata", "abhijeet dipke", "ashutosh ranka",
+                              "saurav das", "sourav das", "gyanesh kumar", "jantarmantar",
+                              "jantar mantar", "protest", "demonstration", "rally", "dharna",
+                              "andolan", "election commission protest"
+                          )
+                          if not any(term in title_lower for term in strong_visual_terms):
                               print("SKIP_UNRELATED_PROTEST_IMAGE:", title[:160])
                               continue
                       seen.add(title)
@@ -1648,6 +1657,18 @@ jobs:
                           file_title = result.get("title", "")
                           if not file_title:
                               continue
+                          # Wikimedia search also returns unrelated wildlife/landscape videos.
+                          # Only accept file titles that explicitly describe protest footage or a named story subject.
+                          title_words = file_title.lower().replace("_", " ")
+                          strong_video_terms = (
+                              "protest", "demonstration", "rally", "march", "dharna", "andolan",
+                              "jantar mantar", "jantarmantar", "citizens for justice", "cjp",
+                              "abhijeet dipke", "ashutosh ranka", "saurav das", "sourav das",
+                              "gyanesh kumar", "election commission protest"
+                          )
+                          if not any(term in title_words for term in strong_video_terms):
+                              print("COMMONS_VIDEO_REJECTED_IRRELEVANT_TITLE:", file_title[:160])
+                              continue
                           detail = session.get("https://commons.wikimedia.org/w/api.php", params={"action": "query", "format": "json", "titles": file_title, "prop": "imageinfo", "iiprop": "url|mime|extmetadata"}, timeout=30)
                           detail.raise_for_status()
                           pages = detail.json().get("query", {}).get("pages", {})
@@ -1707,13 +1728,25 @@ jobs:
                       )
                       api.raise_for_status()
                       hits = api.json().get("hits", [])
-                      protest_terms = {"protest", "protests", "demonstration", "demonstrations", "rally", "march", "dharna", "andolan", "crowd", "activist", "activists", "police", "demonstrators", "barricade", "barricades", "cjp", "court", "judge", "justice", "election", "commission"}
+                      protest_terms = {
+                          "protest", "protests", "demonstration", "demonstrations",
+                          "rally", "march", "dharna", "andolan", "jantarmantar",
+                          "cjp", "abhijeet", "dipke", "ashutosh", "ranka",
+                          "saurav", "sourav", "gyanesh"
+                      }
                       for hit in hits:
                           if video_count >= 5:
                               break
-                          asset_words = {w.lower() for w in re.findall(r"[A-Za-z0-9\u0900-\u097F]+", str(hit.get("tags", "")) + " " + str(hit.get("pageURL", "")) + " " + str(hit.get("title", "")) if len(w) > 2}
+                          asset_text = (str(hit.get("tags", "")) + " " +
+                                        str(hit.get("pageURL", "")) + " " +
+                                        str(hit.get("title", ""))).lower()
+                          asset_words = {w.lower() for w in re.findall(r"[A-Za-z0-9\u0900-\u097F]+", asset_text) if len(w) > 2}
                           if is_protest_story and not (asset_words & protest_terms):
-                              print("PIXABAY_VIDEO_REJECTED_IRRELEVANT:", hit.get("id"), str(hit.get("tags", ""))[:120])
+                              print("PIXABAY_VIDEO_REJECTED_IRRELEVANT:", hit.get("id"), str(hit.get("tags", ""))[:160])
+                              continue
+                          unrelated_terms = ("bird", "birds", "wildlife", "eagle", "parrot", "crane", "eiffel", "landmark", "tourism", "travel", "mountain", "forest", "flower", "ocean", "sea", "sunset", "clouds", "sky timelapse")
+                          if any(term in asset_text for term in unrelated_terms):
+                              print("PIXABAY_VIDEO_REJECTED_GENERIC_STOCK:", hit.get("id"), str(hit.get("tags", ""))[:160])
                               continue
                           variants = hit.get("videos", {})
                           clip = variants.get("medium") or variants.get("small") or variants.get("large")
