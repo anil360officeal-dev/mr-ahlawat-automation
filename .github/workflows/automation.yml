@@ -1792,13 +1792,13 @@ jobs:
           else:
               print("PIXABAY_API_KEY not configured; using photo visuals for this run.")
 
-          # Additional official free-video source: Pexels API (optional key).
-          # Search multiple topic-relevant queries; preserve creator/source attribution.
+          # Pexels is generic stock footage, so do not use it for protest/public-affairs reports.
+          # For other topics it remains an optional free source.
           pexels_key = os.environ.get("PEXELS_API_KEY", "").strip()
-          if pexels_key and not is_protest_story:
-              pexels_queries = queries[:3] + ["India street crowd", "Indian city traffic", "public demonstration India"]
-          elif pexels_key and is_protest_story:
+          if pexels_key and is_protest_story:
               print("PEXELS_PROTEST_BROLL_SKIPPED: generic stock cannot be verified as the actual event")
+          elif pexels_key:
+              pexels_queries = queries[:3] + ["India street crowd", "Indian city traffic"]
               for search_term in pexels_queries:
                   if video_count >= 5:
                       break
