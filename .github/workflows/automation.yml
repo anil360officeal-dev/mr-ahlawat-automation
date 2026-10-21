@@ -1759,7 +1759,8 @@ jobs:
                           "protest", "protests", "protester", "protesters", "protesting",
                           "demonstration", "demonstrations", "demonstrator", "demonstrators",
                           "rally", "march", "dharna", "andolan", "jantarmantar",
-                          "placard", "placards", "signs", "activist", "activists",
+                          "placard", "placards", "signs", "banner", "banners",
+                          "crowd", "crowds", "police", "activist", "activists",
                           "cjp", "abhijeet", "dipke", "ashutosh", "ranka",
                           "saurav", "sourav", "gyanesh"
                       }
