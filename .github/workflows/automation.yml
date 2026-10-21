@@ -2147,6 +2147,12 @@ jobs:
           mkdir -p /tmp/sadtalker-checkpoints
           ln -s /tmp/sadtalker-checkpoints /tmp/SadTalker/checkpoints
           BASE="https://github.com/OpenTalker/SadTalker/releases/download/v0.0.2-rc"
+          # Crop mode uses mapping_00229; full-frame fallback requires mapping_00109.
+          if [ ! -s /tmp/sadtalker-checkpoints/mapping_00109-model.pth.tar ]; then
+            curl -fL --retry 3 "$BASE/mapping_00109-model.pth.tar" -o /tmp/sadtalker-checkpoints/mapping_00109-model.pth.tar
+          else
+            echo "SADTALKER_CACHE_HIT: full-frame mapping checkpoint"
+          fi
           if [ ! -s /tmp/sadtalker-checkpoints/mapping_00229-model.pth.tar ]; then
             curl -fL --retry 3 "$BASE/mapping_00229-model.pth.tar" -o /tmp/sadtalker-checkpoints/mapping_00229-model.pth.tar
           else
