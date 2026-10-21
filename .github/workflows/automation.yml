@@ -28,6 +28,11 @@ on:
         required: true
         default: false
         type: boolean
+      generate_ai_images:
+        description: "Generate one GPT Image illustrative visual (paid API usage; preview only)"
+        required: true
+        default: true
+        type: boolean
   # Temporarily paused: run previews manually until the talking-avatar output passes review.
   # Re-enable scheduled news builds after the preview pipeline is verified.
   # schedule:
@@ -1730,7 +1735,7 @@ jobs:
 
           visuals = [
               name for name in os.listdir("output/media")
-              if (name.startswith("image_") or name.startswith("social_image_")
+              if (name.startswith("image_") or name.startswith("ai_image_") or name.startswith("social_image_")
                   or name == "india_gate_landmark.jpg")
               and name.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
           ]
@@ -1738,6 +1743,78 @@ jobs:
           if not visuals:
               raise RuntimeError("No visuals were downloaded or generated")
           print(f"VISUAL_FILES_READY: {len(visuals)}")
+          PY
+
+      - name: Generate one GPT Image visual for preview
+        if: inputs.generate_ai_images == true && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SHORT_TOPIC: ${{ steps.cjp.outputs.topic || inputs.topic || 'CJP से जुड़ी ताज़ा और सत्यापित दिल्ली-NCR खबर' }}
+        run: |
+          python - <<'PY'
+          import base64
+          import json
+          import os
+          from pathlib import Path
+          import requests
+
+          api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+          if not api_key:
+              print("OPENAI_IMAGE_SKIPPED: OPENAI_API_KEY GitHub secret is not configured.")
+              raise SystemExit(0)
+
+          metadata_path = Path("output/metadata.json")
+          metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+          topic = os.environ.get("SHORT_TOPIC", "").strip()
+          title = str(metadata.get("title", "")).strip()
+          script = str(metadata.get("script", "")).strip()
+          # AI-generated imagery is illustrative only, never evidence of the real event.
+          prompt = (
+              "Create one high-quality vertical 9:16 editorial illustration for an Indian "
+              "current-affairs YouTube Short. Topic context: " + topic[:500] +
+              ". Headline context: " + title[:300] +
+              ". Script context: " + script[:900] +
+              ". Show a believable, cinematic Indian public-affairs environment with natural "
+              "documentary-style lighting, realistic textures, thoughtful composition, and "
+              "clear foreground/background separation. This must be an illustrative visual, "
+              "NOT a photograph of a claimed real incident. Do not depict identifiable real "
+              "politicians or activists, do not invent a specific protest or arrest, no logos, "
+              "no flags unless directly relevant, no text, no captions, no watermark, no graphic "
+              "frames or boxes. Use a different visual metaphor or environment that matches "
+              "the general topic without implying it documents the actual event."
+          )
+          response = requests.post(
+              "https://api.openai.com/v1/images/generations",
+              headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+              json={
+                  "model": "gpt-image-2.5-flare",
+                  "prompt": prompt,
+                  "size": "1024x1536",
+                  "quality": "medium",
+                  "output_format": "png",
+                  "n": 1
+              },
+              timeout=240
+          )
+          if response.status_code >= 400:
+              print("OPENAI_IMAGE_HTTP_ERROR:", response.status_code, response.text[:1200])
+              raise RuntimeError("GPT Image generation request failed.")
+          payload = response.json()
+          data = payload.get("data") or []
+          encoded = data[0].get("b64_json") if data else None
+          if not encoded:
+              raise RuntimeError("GPT Image response did not contain base64 image data.")
+          out_dir = Path("output/media")
+          out_dir.mkdir(parents=True, exist_ok=True)
+          target = out_dir / "ai_image_01.png"
+          target.write_bytes(base64.b64decode(encoded))
+          if target.stat().st_size < 10000:
+              raise RuntimeError("Generated GPT Image file is suspiciously small.")
+          with open("output/media_attribution.txt", "a", encoding="utf-8") as f:
+              f.write("\\nGPT Image API | AI-generated illustrative image, not documentary evidence | Model: gpt-image-2.5-flare\\n")
+          print("OPENAI_GPT_IMAGE_CREATED:", target, "bytes=", target.stat().st_size)
+          print("OPENAI_GPT_IMAGE_NOTE: AI-generated illustration; not evidence of the actual event.")
           PY
 
       - name: Find free moving street-reporter video intro (fallback only if talking avatar fails)
@@ -2377,6 +2454,7 @@ jobs:
               print("SOURCE_AND_USAGE_NOTES_SAVED_IN_OUTPUT_MEDIA_ATTRIBUTION")
           all_images = sorted(set(
               glob.glob("output/media/image_*")
+              + glob.glob("output/media/ai_image_*")
               + glob.glob("output/media/social_image_*")
               + glob.glob("output/media/india_gate_landmark.jpg")
           ))
