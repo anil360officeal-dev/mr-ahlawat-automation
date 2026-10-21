@@ -2189,7 +2189,8 @@ jobs:
           python - <<'PY'
           import glob, os, subprocess
           candidates = [
-              p for p in glob.glob("output/sadtalker/**/*.mp4", recursive=True)
+              p for pattern in ("output/sadtalker/**/*.mp4", "output/sadtalker_fallback/**/*.mp4")
+              for p in glob.glob(pattern, recursive=True)
               if os.path.getsize(p) > 20000
           ]
           if not candidates:
