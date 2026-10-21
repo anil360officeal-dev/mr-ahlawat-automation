@@ -1707,7 +1707,7 @@ jobs:
                       )
                       api.raise_for_status()
                       hits = api.json().get("hits", [])
-                      protest_terms = {"protest", "protests", "demonstration", "rally", "march", "crowd", "activist", "police", "demonstrators", "india", "indian", "delhi", "jantar", "mantar", "cjp", "court", "judge", "justice"}
+                      protest_terms = {"protest", "protests", "demonstration", "demonstrations", "rally", "march", "dharna", "andolan", "crowd", "activist", "activists", "police", "demonstrators", "barricade", "barricades", "cjp", "court", "judge", "justice", "election", "commission"}
                       for hit in hits:
                           if video_count >= 5:
                               break
