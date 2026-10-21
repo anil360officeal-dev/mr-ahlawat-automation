@@ -2172,23 +2172,25 @@ jobs:
           # SadTalker resolves ./checkpoints relative to the current directory.
           # Run inference from its own repo so it detects the downloaded safetensors.
           cd /tmp/SadTalker
-          # Attempt 1: crop-and-resize mode is usually best for a centered headshot.
-          if ! /tmp/sadtalker-venv/bin/python inference.py \
+          # Attempt 1: crop-and-resize for a centered presenter headshot.
+          /tmp/sadtalker-venv/bin/python inference.py \
             --driven_audio "$GITHUB_WORKSPACE/output/sadtalker_source/reporter_audio.wav" \
             --source_image "$GITHUB_WORKSPACE/output/sadtalker_source/reporter.jpg" \
             --result_dir "$GITHUB_WORKSPACE/output/sadtalker" \
             --preprocess crop \
             --size 256 \
-            --cpu; then
-            echo "SADTALKER_PRIMARY_MODE_FAILED; trying alternate full-frame preprocessing."
-            # Attempt 2: alternate preprocessing mode using the same installed model.
+            --cpu || echo "SADTALKER_PRIMARY_MODE_EXITED_WITH_ERROR"
+
+          # Important: a zero exit code alone is not success; check for an actual video.
+          if ! find "$GITHUB_WORKSPACE/output/sadtalker" -type f -name '*.mp4' -size +20k -print -quit 2>/dev/null | grep -q .; then
+            echo "SADTALKER_PRIMARY_NO_VALID_MP4; trying alternate full-frame preprocessing."
             /tmp/sadtalker-venv/bin/python inference.py \
               --driven_audio "$GITHUB_WORKSPACE/output/sadtalker_source/reporter_audio.wav" \
               --source_image "$GITHUB_WORKSPACE/output/sadtalker_source/reporter.jpg" \
               --result_dir "$GITHUB_WORKSPACE/output/sadtalker_fallback" \
               --preprocess full \
               --size 256 \
-              --cpu
+              --cpu || echo "SADTALKER_FALLBACK_MODE_EXITED_WITH_ERROR"
           fi
           cd "$GITHUB_WORKSPACE"
 
