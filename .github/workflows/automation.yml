@@ -2686,7 +2686,7 @@ jobs:
           # Inspect pixels from the actual final MP4, not only source PNG/JSON files.
           # A caption cue is sampled at its midpoint and must leave visible light text
           # in the expected lower-third region; this catches missing/broken burn-in.
-          first_cue = next((g for g in caption_groups if str(g.get("text", "")).strip() and float(g.get("end", 0)) > float(g.get("start", 0)), None)
+          first_cue = next((g for g in caption_groups if str(g.get("text", "")).strip() and float(g.get("end", 0)) > float(g.get("start", 0))), None)
           if first_cue:
               sample_t = max(0.1, (float(first_cue["start"]) + float(first_cue["end"])) / 2)
               sample_path = "output/qa-caption-frame.jpg"
