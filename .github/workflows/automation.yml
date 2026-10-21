@@ -804,7 +804,7 @@ jobs:
                           "model": "gpt-4o-mini-tts",
                           "voice": "cedar",
                           "input": script,
-                          "instructions": "Speak in natural, clear Hindi as an experienced Indian male field reporter. Warm, energetic, expressive and conversational, with realistic pauses and emphasis. Pronounce Hindi names carefully. Do not sound robotic, sleepy, over-dramatic, or like a TV studio announcer. Do not add words that are not in the script.",
+                          "instructions": "Speak in natural, clear Hindi as an Indian male ground reporter speaking directly to viewers outdoors. Sound alert, confident, warm and lively, with conversational emphasis and short natural pauses. Use a slightly brisk pace and strong but believable energy; avoid a flat, sleepy, robotic or TV-studio-announcer delivery. Pronounce names clearly. Do not add words that are not in the script.",
                           "response_format": "mp3"
                       },
                       timeout=150
@@ -827,9 +827,9 @@ jobs:
                   async def make_neural_voice():
                       errors = []
                       for voice, rate, pitch in [
-                          ("hi-IN-KunalNeural", "-3%", "-2Hz"),
-                          ("hi-IN-RehaanNeural", "-2%", "-1Hz"),
-                          ("hi-IN-MadhurNeural", "-2%", "-1Hz"),
+                          ("hi-IN-KunalNeural", "+4%", "+2Hz"),
+                          ("hi-IN-RehaanNeural", "+4%", "+2Hz"),
+                          ("hi-IN-MadhurNeural", "+4%", "+2Hz"),
                       ]:
                           for attempt in range(2):
                               target = f"output/voiceover-{voice}.mp3"
@@ -1691,7 +1691,8 @@ jobs:
           if saved == 0:
               print("No topic-matched photos found; do not generate text-card images as fake footage.")
 
-          # Try to add genuine moving B-roll from Pixabay when its API key is configured.
+          # Try Pixabay only when its own tags/title explicitly match the current story.
+          # Never fill a protest report with generic birds, landmarks, nature or travel footage.
           video_key = os.environ.get("PIXABAY_API_KEY", "").strip()
           if video_key:
               for search_term in queries[:3]:
@@ -1706,9 +1707,14 @@ jobs:
                       )
                       api.raise_for_status()
                       hits = api.json().get("hits", [])
+                      protest_terms = {"protest", "protests", "demonstration", "rally", "march", "crowd", "activist", "police", "demonstrators", "india", "indian", "delhi", "jantar", "mantar", "cjp", "court", "judge", "justice"}
                       for hit in hits:
                           if video_count >= 5:
                               break
+                          asset_words = {w.lower() for w in re.findall(r"[A-Za-z0-9\u0900-\u097F]+", str(hit.get("tags", "")) + " " + str(hit.get("pageURL", "")) + " " + str(hit.get("title", "")) if len(w) > 2}
+                          if is_protest_story and not (asset_words & protest_terms):
+                              print("PIXABAY_VIDEO_REJECTED_IRRELEVANT:", hit.get("id"), str(hit.get("tags", ""))[:120])
+                              continue
                           variants = hit.get("videos", {})
                           clip = variants.get("medium") or variants.get("small") or variants.get("large")
                           if not clip or not clip.get("url"):
