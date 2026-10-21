@@ -1731,11 +1731,19 @@ jobs:
           if saved == 0:
               print("No topic-matched photos found; do not generate text-card images as fake footage.")
 
-          # Try Pixabay only when its own tags/title explicitly match the current story.
-          # Never fill a protest report with generic birds, landmarks, nature or travel footage.
+          # Try topic-specific searches first, then contextual protest footage searches.
+          # Contextual stock is illustrative B-roll, never claimed as footage of the exact event.
           video_key = os.environ.get("PIXABAY_API_KEY", "").strip()
           if video_key:
-              for search_term in queries[:3]:
+              pixabay_search_terms = list(dict.fromkeys(
+                  queries[:3] + ([
+                      "India protest crowd placards",
+                      "Indian demonstration rally crowd",
+                      "Indian people holding protest signs",
+                      "Indian police crowd protest"
+                  ] if is_protest_story else [])
+              ))
+              for search_term in pixabay_search_terms:
                   if video_count >= 5:
                       break
                   try:
@@ -1748,8 +1756,10 @@ jobs:
                       api.raise_for_status()
                       hits = api.json().get("hits", [])
                       protest_terms = {
-                          "protest", "protests", "demonstration", "demonstrations",
+                          "protest", "protests", "protester", "protesters", "protesting",
+                          "demonstration", "demonstrations", "demonstrator", "demonstrators",
                           "rally", "march", "dharna", "andolan", "jantarmantar",
+                          "placard", "placards", "signs", "activist", "activists",
                           "cjp", "abhijeet", "dipke", "ashutosh", "ranka",
                           "saurav", "sourav", "gyanesh"
                       }
@@ -1792,13 +1802,19 @@ jobs:
           else:
               print("PIXABAY_API_KEY not configured; using photo visuals for this run.")
 
-          # Pexels is generic stock footage, so do not use it for protest/public-affairs reports.
-          # For other topics it remains an optional free source.
+          # Pexels can provide clearly-labelled contextual B-roll when exact-event footage
+          # is unavailable. Never describe stock footage as the actual protest/event.
           pexels_key = os.environ.get("PEXELS_API_KEY", "").strip()
-          if pexels_key and is_protest_story:
-              print("PEXELS_PROTEST_BROLL_SKIPPED: generic stock cannot be verified as the actual event")
-          elif pexels_key:
-              pexels_queries = queries[:3] + ["India street crowd", "Indian city traffic"]
+          if pexels_key:
+              pexels_queries = list(dict.fromkeys(
+                  queries[:3] + ([
+                      "India protest crowd placards",
+                      "Indian demonstration rally crowd",
+                      "Indian people holding protest signs",
+                      "Indian police crowd control",
+                      "Indian journalist outdoor reporting"
+                  ] if is_protest_story else ["India street crowd", "Indian city traffic"])
+              ))
               for search_term in pexels_queries:
                   if video_count >= 5:
                       break
