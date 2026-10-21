@@ -23,6 +23,11 @@ on:
         required: true
         default: true
         type: boolean
+      generate_ai_images:
+        description: "Generate one AI editorial illustration using OpenAI Images API (may incur API charges)"
+        required: true
+        default: true
+        type: boolean
   # Temporarily paused: run previews manually until the talking-avatar output passes review.
   # Re-enable scheduled news builds after the preview pipeline is verified.
   # schedule:
@@ -1735,6 +1740,58 @@ jobs:
           print(f"VISUAL_FILES_READY: {len(visuals)}")
           PY
 
+      - name: Generate one AI editorial illustration for the visual storyboard
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false' && inputs.generate_ai_images == true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SHORT_TOPIC: ${{ steps.cjp.outputs.topic || inputs.topic || 'CJP से जुड़ी ताज़ा और सत्यापित दिल्ली-NCR खबर' }}
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          import os, json, base64, requests
+          key = os.environ.get("OPENAI_API_KEY", "").strip()
+          if not key:
+              print("AI_IMAGE_SKIPPED: OPENAI_API_KEY secret is not configured; continuing with sourced media.")
+              raise SystemExit(0)
+          with open("output/metadata.json", encoding="utf-8") as f:
+              metadata = json.load(f)
+          topic = str(metadata.get("title") or os.environ.get("SHORT_TOPIC", "current affairs")).strip()
+          script = str(metadata.get("script", "")).strip()[:500]
+          prompt = (
+              "Create a high-quality vertical 9:16 editorial illustration for a Hindi current-affairs short. "
+              "Topic: " + topic + ". Context: " + script + ". "
+              "Show a grounded Indian public-interest reporting atmosphere with realistic street-level lighting, "
+              "documentary composition, natural colors, strong visual storytelling, no TV studio, no text, no logos. "
+              "This must be an illustrative scene, not a fabricated photograph of a real named person or a claim that "
+              "this exact event was photographed. Do not depict identifiable politicians or activists."
+          )
+          response = requests.post(
+              "https://api.openai.com/v1/images/generations",
+              headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+              json={"model": "gpt-image-1", "prompt": prompt, "size": "1024x1536", "quality": "medium", "output_format": "png", "n": 1},
+              timeout=180
+          )
+          if response.status_code != 200:
+              print("AI_IMAGE_API_WARNING:", response.status_code, response.text[:1200])
+              raise SystemExit(0)
+          data = response.json().get("data", [])
+          if not data or not data[0].get("b64_json"):
+              print("AI_IMAGE_API_WARNING: response did not include image bytes")
+              raise SystemExit(0)
+          path = "output/media/image_00a_ai_generated.png"
+          with open(path, "wb") as f:
+              f.write(base64.b64decode(data[0]["b64_json"]))
+          if os.path.getsize(path) < 10000:
+              os.remove(path)
+              print("AI_IMAGE_REJECTED: generated file was unexpectedly small")
+              raise SystemExit(0)
+          with open("output/media/ai_generated_image_note.txt", "w", encoding="utf-8") as f:
+              f.write("AI-generated editorial illustration, not documentary evidence of the reported event.\n")
+          with open("output/media/attribution.txt", "a", encoding="utf-8") as f:
+              f.write("\\nAI-generated editorial illustration via OpenAI Images API; illustrative only, not evidence of the specific event.\\n")
+          print("AI_EDITORIAL_ILLUSTRATION_CREATED:", path, os.path.getsize(path), "bytes")
+          PY
+
       - name: Find free moving street-reporter video intro (fallback only if talking avatar fails)
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         env:
@@ -2276,7 +2333,10 @@ jobs:
                   path for path in other_images
                   if os.path.basename(path) != "india_gate_landmark.jpg"
               ]
-          images = other_images[:6]
+          ai_images = [p for p in other_images if os.path.basename(p) == "image_00a_ai_generated.png"]
+          images = (ai_images + [p for p in other_images if p not in ai_images])[:6]
+          if ai_images:
+              print("AI_ILLUSTRATION_PRIORITIZED_IN_STORYBOARD: clearly illustrative, not event evidence")
           avatar_path = "output/media/reporter_intro.mp4"
           stock_reporter_path = "output/media/reporter_stock_intro.mp4"
           base_assets = []
