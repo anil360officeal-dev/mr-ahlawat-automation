@@ -29,7 +29,7 @@ on:
         default: false
         type: boolean
       generate_ai_images:
-        description: "Generate one GPT Image illustrative visual (paid API usage; preview only)"
+        description: "Generate one AI visual: OpenAI GPT Image if key exists, otherwise Gemini (paid API usage; preview only)"
         required: true
         default: true
         type: boolean
