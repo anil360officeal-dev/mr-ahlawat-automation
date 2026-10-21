@@ -1745,11 +1745,12 @@ jobs:
           print(f"VISUAL_FILES_READY: {len(visuals)}")
           PY
 
-      - name: Generate one GPT Image visual for preview
+      - name: Generate AI image visual for preview (OpenAI first, Gemini fallback)
         if: inputs.generate_ai_images == true && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         continue-on-error: true
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SHORT_TOPIC: ${{ steps.cjp.outputs.topic || inputs.topic || 'CJP से जुड़ी ताज़ा और सत्यापित दिल्ली-NCR खबर' }}
         run: |
           python - <<'PY'
@@ -1759,17 +1760,16 @@ jobs:
           from pathlib import Path
           import requests
 
-          api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-          if not api_key:
-              print("OPENAI_IMAGE_SKIPPED: OPENAI_API_KEY GitHub secret is not configured.")
+          openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
+          gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+          if not openai_key and not gemini_key:
+              print("AI_IMAGE_SKIPPED: Neither OPENAI_API_KEY nor GEMINI_API_KEY is configured.")
               raise SystemExit(0)
 
-          metadata_path = Path("output/metadata.json")
-          metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+          metadata = json.loads(Path("output/metadata.json").read_text(encoding="utf-8"))
           topic = os.environ.get("SHORT_TOPIC", "").strip()
           title = str(metadata.get("title", "")).strip()
           script = str(metadata.get("script", "")).strip()
-          # AI-generated imagery is illustrative only, never evidence of the real event.
           prompt = (
               "Create one high-quality vertical 9:16 editorial illustration for an Indian "
               "current-affairs YouTube Short. Topic context: " + topic[:500] +
@@ -1781,40 +1781,78 @@ jobs:
               "NOT a photograph of a claimed real incident. Do not depict identifiable real "
               "politicians or activists, do not invent a specific protest or arrest, no logos, "
               "no flags unless directly relevant, no text, no captions, no watermark, no graphic "
-              "frames or boxes. Use a different visual metaphor or environment that matches "
-              "the general topic without implying it documents the actual event."
+              "frames or boxes. Use a visual metaphor or environment that matches the general "
+              "topic without implying it documents the actual event."
           )
-          response = requests.post(
-              "https://api.openai.com/v1/images/generations",
-              headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
-              json={
-                  "model": "gpt-image-2.5-flare",
-                  "prompt": prompt,
-                  "size": "1024x1536",
-                  "quality": "medium",
-                  "output_format": "png",
-                  "n": 1
-              },
-              timeout=240
-          )
-          if response.status_code >= 400:
-              print("OPENAI_IMAGE_HTTP_ERROR:", response.status_code, response.text[:1200])
-              raise RuntimeError("GPT Image generation request failed.")
-          payload = response.json()
-          data = payload.get("data") or []
-          encoded = data[0].get("b64_json") if data else None
-          if not encoded:
-              raise RuntimeError("GPT Image response did not contain base64 image data.")
+
+          image_bytes = None
+          provider = None
+          if openai_key:
+              response = requests.post(
+                  "https://api.openai.com/v1/images/generations",
+                  headers={"Authorization": "Bearer " + openai_key, "Content-Type": "application/json"},
+                  json={
+                      "model": "gpt-image-2.5-flare",
+                      "prompt": prompt,
+                      "size": "1024x1536",
+                      "quality": "medium",
+                      "output_format": "png",
+                      "n": 1
+                  },
+                  timeout=240
+              )
+              if response.status_code >= 400:
+                  print("OPENAI_IMAGE_HTTP_ERROR:", response.status_code, response.text[:1000])
+                  raise RuntimeError("OpenAI GPT Image generation request failed.")
+              data = response.json().get("data") or []
+              encoded = data[0].get("b64_json") if data else None
+              if encoded:
+                  image_bytes = base64.b64decode(encoded)
+                  provider = "OpenAI GPT Image gpt-image-2.5-flare"
+              else:
+                  raise RuntimeError("OpenAI Image response did not contain base64 image data.")
+          else:
+              # Use the Gemini API key already configured for this repository if no OpenAI key exists.
+              response = requests.post(
+                  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent",
+                  headers={"x-goog-api-key": gemini_key, "Content-Type": "application/json"},
+                  json={
+                      "contents": [{"parts": [{"text": prompt}]}],
+                      "generationConfig": {
+                          "responseModalities": ["IMAGE"],
+                          "imageConfig": {"aspectRatio": "9:16", "imageSize": "1K"}
+                      }
+                  },
+                  timeout=240
+              )
+              if response.status_code >= 400:
+                  print("GEMINI_IMAGE_HTTP_ERROR:", response.status_code, response.text[:1000])
+                  raise RuntimeError("Gemini image generation request failed.")
+              payload = response.json()
+              parts = []
+              for candidate in payload.get("candidates", []):
+                  parts.extend(candidate.get("content", {}).get("parts", []))
+              for part in parts:
+                  inline = part.get("inlineData") or part.get("inline_data") or {}
+                  encoded = inline.get("data")
+                  if encoded:
+                      image_bytes = base64.b64decode(encoded)
+                      break
+              if image_bytes is None:
+                  text_parts = [p.get("text", "") for p in parts if p.get("text")]
+                  raise RuntimeError("Gemini response contained no image data: " + " ".join(text_parts)[:400])
+              provider = "Google Gemini 3.1 Flash Image"
+
           out_dir = Path("output/media")
           out_dir.mkdir(parents=True, exist_ok=True)
           target = out_dir / "ai_image_01.png"
-          target.write_bytes(base64.b64decode(encoded))
+          target.write_bytes(image_bytes)
           if target.stat().st_size < 10000:
-              raise RuntimeError("Generated GPT Image file is suspiciously small.")
+              raise RuntimeError("Generated AI image file is suspiciously small.")
           with open("output/media_attribution.txt", "a", encoding="utf-8") as f:
-              f.write("\\nGPT Image API | AI-generated illustrative image, not documentary evidence | Model: gpt-image-2.5-flare\\n")
-          print("OPENAI_GPT_IMAGE_CREATED:", target, "bytes=", target.stat().st_size)
-          print("OPENAI_GPT_IMAGE_NOTE: AI-generated illustration; not evidence of the actual event.")
+              f.write("\\n" + provider + " | AI-generated illustrative image, not documentary evidence\\n")
+          print("AI_IMAGE_CREATED:", target, "provider=", provider, "bytes=", target.stat().st_size)
+          print("AI_IMAGE_NOTE: AI-generated illustration; not evidence of the actual event.")
           PY
 
       - name: Find free moving street-reporter video intro (fallback only if talking avatar fails)
