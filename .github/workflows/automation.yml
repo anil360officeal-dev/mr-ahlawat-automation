@@ -955,7 +955,7 @@ jobs:
               if os.path.exists(name) and os.path.getsize(name) >= 1000:
                   print(f"VOICE_SAMPLE_AVAILABLE={name}")
           print("VOICE_COMPARISON_SAMPLES_READY")
-          print("Production voice is Piper Pratham Hindi male (Kunal fallback only if Pratham fails).")
+          print("Production voice engine is recorded in VOICE_ENGINE logs; OpenAI/Edge neural TTS may fall back to Piper if unavailable.")
           PY
 
       - name: Download relevant Wikimedia images
@@ -2541,7 +2541,8 @@ jobs:
 
           if { [ -s output/sadtalker_success.txt ] && [ -s output/media/reporter_intro.mp4 ]; } || \
              { [ -s output/media/reporter_stock_intro.mp4 ] && [ -s output/media/reporter_stock_intro_source.txt ]; } || \
-             compgen -G "output/media/clip_*.mp4" > /dev/null; then
+             compgen -G "output/media/clip_*.mp4" > /dev/null || \
+             compgen -G "output/media/social_clip_*.mp4" > /dev/null; then
             # New caption renderer: Pillow + RAQM shapes Devanagari and draws transparent text directly on frames.
             python - <<'PY'
           import json, os, subprocess
@@ -2653,7 +2654,8 @@ jobs:
               fail("Voice-over WAV is missing or suspiciously small.")
           avatar_ready = os.path.isfile("output/sadtalker_success.txt") and os.path.isfile("output/media/reporter_intro.mp4")
           stock_ready = os.path.isfile("output/media/reporter_stock_intro.mp4") and os.path.isfile("output/media/reporter_stock_intro_source.txt")
-          broll_clips = sorted(__import__("glob").glob("output/media/clip_*.mp4"))
+          import glob
+          broll_clips = sorted(glob.glob("output/media/clip_*.mp4") + glob.glob("output/media/social_clip_*.mp4"))
           if avatar_ready:
               print("REPORTER_QUALITY_MODE: talking avatar with generated lip-sync")
           elif stock_ready:
@@ -2681,6 +2683,22 @@ jobs:
           if len(caption_groups) < 3 or not any(str(g.get("text", "")).strip() for g in caption_groups):
               fail("Caption timing JSON has no usable subtitle text.")
           print("TEXT_OVERLAY_QA_PASSED: headline has visible text; subtitle timeline has", len(caption_groups), "groups")
+          # Inspect pixels from the actual final MP4, not only source PNG/JSON files.
+          # A caption cue is sampled at its midpoint and must leave visible light text
+          # in the expected lower-third region; this catches missing/broken burn-in.
+          first_cue = next((g for g in caption_groups if str(g.get("text", "")).strip() and float(g.get("end", 0)) > float(g.get("start", 0)), None)
+          if first_cue:
+              sample_t = max(0.1, (float(first_cue["start"]) + float(first_cue["end"])) / 2)
+              sample_path = "output/qa-caption-frame.jpg"
+              subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", str(sample_t), "-i", video, "-frames:v", "1", sample_path], check=True)
+              sample = Image.open(sample_path).convert("RGB")
+              crop = sample.crop((60, 1320, 1020, 1830))
+              bright = sum(1 for r, g, b in crop.getdata() if r > 215 and g > 215 and b > 215)
+              print("FINAL_MP4_CAPTION_PIXEL_CHECK:", bright, "bright pixels at", round(sample_t, 2), "seconds")
+              if bright < 80:
+                  fail("Caption files exist but visible subtitle pixels were not detected in the final MP4.")
+          else:
+              fail("No usable caption cue available for final MP4 pixel inspection.")
           with open(captions, encoding="utf-8") as f:
               caption_text = f.read()
           caption_count = caption_text.count("Dialogue:")
