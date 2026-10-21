@@ -1196,24 +1196,24 @@ jobs:
                               break
                           tags = str(hit.get("tags", "")).lower()
                           if is_protest_story:
-                          # A location tag alone is not evidence of a protest/news image.
-                          # Require the asset's own tags to identify an event, CJP/person, or specific civic action.
-                          event_terms = (
-                              "protest", "protests", "demonstration", "demonstrations",
-                              "rally", "march", "dharna", "andolan", "jantarmantar",
-                              "jantar mantar", "cjp", "abhijeet dipke", "ashutosh ranka",
-                              "saurav das", "sourav das", "gyanesh kumar",
-                              "election commission protest"
-                          )
-                          if not any(term in tags for term in event_terms):
-                              print("SKIP_IMAGE_WITHOUT_EVENT_SPECIFIC_TAGS:", tags[:180])
-                              continue
-                          if any(term in tags for term in (
-                              "ukraine", "russia", "concert", "music festival",
-                              "celebrity", "fashion model", "beauty portrait"
-                          )):
-                              print("SKIP_UNRELATED_STOCK_IMAGE:", tags[:160])
-                              continue
+                              # A location tag alone is not evidence of a protest/news image.
+                              # Require the asset's own tags to identify an event, CJP/person, or specific civic action.
+                              event_terms = (
+                                  "protest", "protests", "demonstration", "demonstrations",
+                                  "rally", "march", "dharna", "andolan", "jantarmantar",
+                                  "jantar mantar", "cjp", "abhijeet dipke", "ashutosh ranka",
+                                  "saurav das", "sourav das", "gyanesh kumar",
+                                  "election commission protest"
+                              )
+                              if not any(term in tags for term in event_terms):
+                                  print("SKIP_IMAGE_WITHOUT_EVENT_SPECIFIC_TAGS:", tags[:180])
+                                  continue
+                              if any(term in tags for term in (
+                                  "ukraine", "russia", "concert", "music festival",
+                                  "celebrity", "fashion model", "beauty portrait"
+                              )):
+                                  print("SKIP_UNRELATED_STOCK_IMAGE:", tags[:160])
+                                  continue
                           image_url = hit.get("largeImageURL") or hit.get("webformatURL")
                           if not image_url or image_url in seen:
                               continue
