@@ -2033,16 +2033,52 @@ jobs:
           key: sadtalker-checkpoints-crop256-v1
 
       - name: Generate free talking Indian male avatar with SadTalker (CPU)
-        # Disabled after review found an unrelated grayscale portrait; prefer moving reporter footage over a misleading talking portrait.
-        if: false
+        # Use a purpose-generated, non-identifiable Indian presenter portrait first; fall back to attributed Commons media only if image API is unavailable.
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         continue-on-error: true
         timeout-minutes: 40
         run: |
           set -e
           mkdir -p output/media output/sadtalker_source
           python - <<'PY'
-          import io, re, requests
+          import io, re, os, base64, requests
           from PIL import Image
+          key = os.environ.get("OPENAI_API_KEY", "").strip()
+          if key:
+              try:
+                  prompt = (
+                      "Photorealistic head-and-shoulders portrait of a fictional adult Indian male field reporter, "
+                      "age about 30, medium-brown Indian skin, short neat black hair, subtle stubble, wearing a plain "
+                      "dark navy collared shirt, facing directly toward camera, neutral friendly expression, lips gently "
+                      "closed, both eyes clearly visible, shoulders visible, centered symmetrical face, natural daylight, "
+                      "realistic Indian street background softly blurred, documentary photojournalism, vertical portrait. "
+                      "No text, no logo, no microphone covering the mouth, no famous person, no resemblance to any real person."
+                  )
+                  response = requests.post(
+                      "https://api.openai.com/v1/images/generations",
+                      headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+                      json={"model": "gpt-image-1", "prompt": prompt, "size": "1024x1536", "quality": "medium", "output_format": "png", "n": 1},
+                      timeout=180
+                  )
+                  if response.status_code == 200:
+                      rows = response.json().get("data", [])
+                      if rows and rows[0].get("b64_json"):
+                          generated = Image.open(io.BytesIO(base64.b64decode(rows[0]["b64_json"]))).convert("RGB")
+                          if generated.width >= 250 and generated.height >= 250:
+                              generated.save("output/sadtalker_source/reporter.jpg", "JPEG", quality=94)
+                              with open("output/sadtalker_source/portrait_attribution.txt", "w", encoding="utf-8") as f:
+                                  f.write("AI-generated fictional Indian male presenter portrait; not a real person or documentary evidence.\n")
+                              print("SADTALKER_PORTRAIT_SOURCE: purpose-generated fictional Indian presenter")
+                              raise SystemExit(0)
+                  print("AI_REPORTER_PORTRAIT_WARNING:", response.status_code, response.text[:500])
+              except SystemExit:
+                  raise
+              except Exception as exc:
+                  print("AI_REPORTER_PORTRAIT_WARNING:", repr(exc))
+          else:
+              print("AI_REPORTER_PORTRAIT_SKIPPED: OPENAI_API_KEY not configured; trying attributed Commons portrait.")
           session = requests.Session()
           session.headers.update({"User-Agent": "MrAhlawatShortsAutomation/1.0 (open-source avatar portrait search)"})
           queries = ['Indian male portrait photograph', 'Indian man headshot photograph', 'Indian male journalist portrait', 'Indian man looking at camera portrait']
