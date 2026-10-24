@@ -2278,6 +2278,15 @@ jobs:
             echo "REPORTER_MISSING: no suitable moving reporter or B-roll video; still-only preview remains blocked."
           fi
 
+      - name: Generate optional Agnes AI B-roll (free-tier/API access dependent)
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        env:
+          AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
+        continue-on-error: true
+        run: |
+          mkdir -p output/media
+          python scripts/agnes_video_generator.py
+
       - name: Create Ground Report video with Hindi captions
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         run: |
