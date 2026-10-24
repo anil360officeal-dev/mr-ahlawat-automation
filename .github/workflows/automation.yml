@@ -2283,7 +2283,7 @@ jobs:
             echo "REPORTER_MISSING: no suitable moving reporter or B-roll video; still-only preview remains blocked."
           fi
 
-      - name: Generate optional Agnes AI B-roll (manual opt-in only; may use credits)
+      - name: Generate Agnes AI B-roll automatically when API key is configured (may use credits)
         if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         env:
           AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
