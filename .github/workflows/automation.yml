@@ -2284,7 +2284,7 @@ jobs:
           fi
 
       - name: Generate optional Agnes AI B-roll (manual opt-in only; may use credits)
-        if: inputs.generate_agnes_video == true && steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
+        if: steps.daily.outputs.allowed != 'false' && steps.cjp.outputs.should_run != 'false'
         env:
           AGNES_API_KEY: ${{ secrets.AGNES_API_KEY }}
         continue-on-error: true
